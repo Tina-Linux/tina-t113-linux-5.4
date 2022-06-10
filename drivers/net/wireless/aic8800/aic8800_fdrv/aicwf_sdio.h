@@ -43,8 +43,7 @@ typedef enum {
 	SDIO_TYPE_DATA         = 0X00,
 	SDIO_TYPE_CFG          = 0X10,
 	SDIO_TYPE_CFG_CMD_RSP  = 0X11,
-	SDIO_TYPE_CFG_DATA_CFM = 0X12,
-	SDIO_TYPE_CFG_PRINT    = 0X13
+	SDIO_TYPE_CFG_DATA_CFM = 0X12
 } sdio_type;
 
 struct rwnx_hw;

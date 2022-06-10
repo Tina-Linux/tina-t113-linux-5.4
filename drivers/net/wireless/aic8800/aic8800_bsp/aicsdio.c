@@ -111,6 +111,7 @@ int aicbsp_set_subsys(int subsys, int state)
 		} else {
 			aicbsp_platform_power_off();
 		}
+		pre_power_map = cur_power_map;
 	} else {
 		sdio_dbg("%s, power state no need to change, current: %d\n", __func__, cur_power_state);
 	}

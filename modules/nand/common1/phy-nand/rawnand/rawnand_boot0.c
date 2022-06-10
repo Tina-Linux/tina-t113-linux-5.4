@@ -3,8 +3,7 @@
 #define _NCFB8_C_
 
 #include "../../nfd/nand_osal_for_linux.h"
-/*#include "../nand_boot.h"*/
-#include "../nand-partition3/sunxi_nand_boot.h"
+#include "../nand_boot.h"
 #include "../nand_physic_interface.h"
 #include "rawnand_chip.h"
 #include "controller/ndfc_ops.h"

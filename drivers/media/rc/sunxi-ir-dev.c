@@ -42,22 +42,6 @@ static bool boot_code;
 struct sunxi_ir_rx_data *ir_rx_data;
 static struct ir_raw_event rawir;
 
-static inline void sunxi_irrx_save_regs(struct sunxi_ir_rx_data *chip)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_irrx_regs_offset); i++)
-		chip->regs_backup[i] = readl(chip->reg_base + sunxi_irrx_regs_offset[i]);
-}
-
-static inline void sunxi_irrx_restore_regs(struct sunxi_ir_rx_data *chip)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_irrx_regs_offset); i++)
-		writel(chip->regs_backup[i], chip->reg_base + sunxi_irrx_regs_offset[i]);
-}
-
 static inline u32 ir_get_data(void __iomem *reg_base)
 {
 	return readl(reg_base + IR_RXDAT_REG);
@@ -407,6 +391,31 @@ static void ir_clk_exit(struct sunxi_ir_rx_data *ir_rx_data)
 		clk_put(ir_rx_data->pclk);
 		ir_rx_data->pclk = NULL;
 	}
+}
+
+static void ir_clk_uncfg(struct sunxi_ir_rx_data *ir_rx_data)
+{
+
+	if (IS_ERR_OR_NULL(ir_rx_data->mclk))
+		pr_err("ir_clk handle is invalid, just return!\n");
+	else {
+		clk_disable_unprepare(ir_rx_data->mclk);
+	}
+
+	if (IS_ERR_OR_NULL(ir_rx_data->bclk))
+		pr_err("bus clk handle is invalid, just return!\n");
+	else {
+		clk_disable_unprepare(ir_rx_data->bclk);
+	}
+
+	reset_control_assert(ir_rx_data->reset);
+#if 0
+	if (IS_ERR_OR_NULL(ir_rx_data->pclk))
+		pr_err("ir_clk_source handle is invalid, just return!\n");
+	else {
+		clk_disable_unprepare(ir_rx_data->pclk);
+	}
+#endif
 }
 
 static int ir_select_gpio_state(struct pinctrl *pctrl, char *name)
@@ -799,23 +808,43 @@ static int sunxi_ir_recv_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_PM
 
+static int ir_resume_setup(struct sunxi_ir_rx_data *ir_data)
+{
+	int ret;
+
+	if (IS_ERR_OR_NULL(ir_data->pctrl)) {
+		pr_err("ir pin config error\n");
+		return -1;
+	}
+
+	ir_select_gpio_state(ir_data->pctrl, PINCTRL_STATE_DEFAULT);
+
+	ret = ir_clk_cfg(ir_rx_data);
+	if (ret) {
+		pr_err("ir rx clk configure failed!\n");
+		return ret;
+	}
+
+	ir_reg_cfg(ir_data->reg_base);
+	return 0;
+}
+
 static int sunxi_ir_recv_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sunxi_ir_rx_data *ir_rx_data = platform_get_drvdata(pdev);
+	int ret = 0;
 
 	pr_debug("enter: sunxi_ir_rx_suspend.\n");
 
 	disable_irq_nosync(ir_rx_data->irq_num);
+	ir_clk_uncfg(ir_rx_data);
 
-	sunxi_irrx_save_regs(ir_rx_data);
-
-	ir_select_gpio_state(ir_rx_data->pctrl, PINCTRL_STATE_SLEEP);
-
-	clk_disable_unprepare(ir_rx_data->mclk);
-	clk_disable_unprepare(ir_rx_data->bclk);
-
-	reset_control_assert(ir_rx_data->reset);
+	ret = ir_select_gpio_state(ir_rx_data->pctrl, PINCTRL_STATE_SLEEP);
+	if (ret) {
+		pr_err("%s: ir rx suspend failed\n", __func__);
+		return ret;
+	}
 
 	return 0;
 }
@@ -828,28 +857,13 @@ static int sunxi_ir_recv_resume(struct device *dev)
 
 	pr_debug("enter: sunxi_ir_rx_resume.\n");
 
-	ret = reset_control_deassert(ir_rx_data->reset);
-	if (ret) {
-		pr_err("reset_control_deassert failed\n");
-		return 0;
-	}
-
-	ret = clk_prepare_enable(ir_rx_data->bclk);
-	if (ret) {
-		pr_err("try to enable bus clk failed!\n");
-		return 0;
-	}
-	ret = clk_prepare_enable(ir_rx_data->mclk);
-	if (ret) {
-		pr_err("try to enable bus clk failed!\n");
-		return 0;
-	}
-
-	ir_select_gpio_state(ir_rx_data->pctrl, PINCTRL_STATE_DEFAULT);
-
-	sunxi_irrx_restore_regs(ir_rx_data);
-
 	enable_irq(ir_rx_data->irq_num);
+
+	ret = ir_resume_setup(ir_rx_data);
+	if (ret) {
+		pr_err("%s: ir rx resume failed\n", __func__);
+		return ret;
+	}
 
 	return 0;
 }

@@ -765,8 +765,7 @@ static int bluesleep_probe(struct platform_device *pdev)
 	bsi->host_wake = of_get_named_gpio_flags(np, "bt_hostwake", 0, &config);
 	if (!gpio_is_valid(bsi->host_wake)) {
 		BT_ERR("get gpio bt_hostwake failed\n");
-		ret = -EINVAL;
-		goto err0;
+		return -EINVAL;
 	}
 
 	/* set host_wake_assert */
@@ -782,13 +781,13 @@ static int bluesleep_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		BT_ERR("can't request bt_hostwake gpio %d\n",
 			bsi->host_wake);
-		goto err0;
+		return ret;
 	}
 	ret = gpio_direction_input(bsi->host_wake);
 	if (ret < 0) {
 		BT_ERR("can't request input direction bt_wake gpio %d\n",
 			bsi->host_wake);
-		goto err1;
+		return ret;
 	}
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
@@ -802,13 +801,13 @@ static int bluesleep_probe(struct platform_device *pdev)
 		ret = device_init_wakeup(dev, true);
 		if (ret < 0) {
 			BT_ERR("device init wakeup failed!\n");
-			goto err1;
+			return ret;
 		}
 		ret = dev_pm_set_wake_irq(dev, gpio_to_irq(bsi->host_wake));
 		if (ret < 0) {
 			BT_ERR("can't enable wakeup src for bt_hostwake %d\n",
 				bsi->host_wake);
-			goto err2;
+			return ret;
 		}
 		bsi->wakeup_enable = 1;
 	}
@@ -816,15 +815,14 @@ static int bluesleep_probe(struct platform_device *pdev)
 	bsi->ext_wake = of_get_named_gpio_flags(np, "bt_wake", 0, &config);
 	if (!gpio_is_valid(bsi->ext_wake)) {
 		BT_ERR("get gpio bt_wake failed\n");
-		ret = -EINVAL;
-		goto err2;
+		return -EINVAL;
 	}
 
 	ret = devm_gpio_request(dev, bsi->ext_wake, "bt_wake");
 	if (ret < 0) {
 		BT_ERR("can't request bt_wake gpio %d\n",
 			bsi->ext_wake);
-		goto err2;
+		return ret;
 	}
 
 	/* set ext_wake_assert */
@@ -841,7 +839,7 @@ static int bluesleep_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		BT_ERR("can't request output direction bt_wake gpio %d\n",
 			bsi->ext_wake);
-		goto err3;
+		return ret;
 	}
 	/*set ext_wake deassert as default*/
 	gpio_set_value(bsi->ext_wake, !bsi->ext_wake_assert);
@@ -852,7 +850,7 @@ static int bluesleep_probe(struct platform_device *pdev)
 		BT_ERR("map gpio [%d] to virq failed, errno = %d\n",
 				bsi->host_wake, bsi->host_wake_irq);
 		ret = -ENODEV;
-		goto err3;
+		return ret;
 	}
 
 	uart_index = DEFAULT_UART_INDEX;
@@ -876,20 +874,7 @@ static int bluesleep_probe(struct platform_device *pdev)
 	wake_lock_init(&bsi->wake_lock, WAKE_LOCK_SUSPEND, "bluesleep");
 #endif
 	bsi->pdev = pdev;
-
 	return 0;
-
-err3:
-	devm_gpio_free(dev, bsi->ext_wake);
-err2:
-	device_init_wakeup(dev, false);
-err1:
-	devm_gpio_free(dev, bsi->host_wake);
-err0:
-	devm_kfree(dev, bsi);
-
-	BT_ERR("probe fail, err: %d", ret);
-	return ret;
 }
 
 static int bluesleep_remove(struct platform_device *pdev)

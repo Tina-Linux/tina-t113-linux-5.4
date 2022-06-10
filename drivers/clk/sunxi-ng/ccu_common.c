@@ -11,7 +11,7 @@
 #include <linux/slab.h>
 #include <linux/syscore_ops.h>
 #include <linux/module.h>
-#include <linux/clkdev.h>
+
 #include "ccu_common.h"
 #include "ccu_gate.h"
 #include "ccu_reset.h"
@@ -217,12 +217,6 @@ int sunxi_ccu_probe(struct device_node *node, void __iomem *reg,
 
 		name = hw->init->name;
 		ret = of_clk_hw_register(node, hw);
-
-/* add this CONFIG for clk SATA */
-#ifdef CONFIG_COMMON_CLK_DEBUG
-		clk_hw_register_clkdev(hw, name, NULL);
-#endif
-
 		if (ret) {
 			pr_err("Couldn't register clock %d - %s\n", i, name);
 			goto err_clk_unreg;

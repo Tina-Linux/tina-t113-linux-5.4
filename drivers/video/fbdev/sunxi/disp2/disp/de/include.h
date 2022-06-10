@@ -66,7 +66,7 @@
 #include "disp_features.h"
 
 /* #include "disp_format_convert.h" */
-#define DP printk("[DEBUG] %s, %s, %d \n", __FILE__, __func__, __LINE__);
+
 #define DISP2_DEBUG_LEVEL 0
 
 #if DISP2_DEBUG_LEVEL == 1

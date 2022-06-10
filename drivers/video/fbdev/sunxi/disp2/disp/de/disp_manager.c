@@ -2575,7 +2575,6 @@ static s32 disp_mgr_enable(struct disp_manager *mgr)
 	dev_config.bits = DISP_DATA_8BITS;
 	dev_config.eotf = DISP_EOTF_GAMMA22;
 	dev_config.cs = DISP_BT601_F;
-	dev_config.dvi_hdmi = DISP_HDMI;
 	dev_config.range = DISP_COLOR_RANGE_16_235;
 	dev_config.scan = DISP_SCANINFO_NO_DATA;
 	dev_config.aspect_ratio = 8;

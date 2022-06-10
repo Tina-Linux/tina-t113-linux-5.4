@@ -22,25 +22,25 @@
 #include <linux/regulator/consumer.h>
 #include <asm/ioctl.h>
 
-#define TWI_MODULE_NUM	(5)
-#define HEXADECIMAL		(0x10)
+#define TWI_MODULE_NUM    (5)
+#define HEXADECIMAL	(0x10)
 #define REG_INTERVAL	(0x04)
-#define REG_CL			(0x0c)
-#define REG_RANGE		(0x20)
+#define REG_CL		(0x0c)
+#define REG_RANGE	(0x20)
 
 #define AUTOSUSPEND_TIMEOUT 5000
-#define STANDDARD_FREQ		100000
+#define STANDDARD_FREQ 100000
 
 /* TWI Register Offset */
 #define TWI_ADDR_REG		(0x00)	/*  31:8bit reserved,7-1bit for slave addr,0 bit for GCE */
 #define TWI_XADDR_REG		(0x04)	/*  31:8bit reserved,7-0bit for second addr in 10bit addr */
 #define TWI_DATA_REG		(0x08)	/*  31:8bit reserved, 7-0bit send or receive data byte */
-#define TWI_CTL_REG			(0x0C)	/*  INT_EN,BUS_EN,M_STA,INT_FLAG,A_ACK */
+#define TWI_CTL_REG		(0x0C)	/*  INT_EN,BUS_EN,M_STA,INT_FLAG,A_ACK */
 #define TWI_STAT_REG		(0x10)	/*  28 interrupt types + 0xF8 normal type = 29  */
-#define TWI_CLK_REG			(0x14)	/*  31:7bit reserved,6-3bit,CLK_M,2-0bit CLK_N */
+#define TWI_CLK_REG		(0x14)	/*  31:7bit reserved,6-3bit,CLK_M,2-0bit CLK_N */
 #define TWI_SRST_REG		(0x18)	/*  31:1bit reserved;0bit,write 1 to clear 0. */
-#define TWI_EFR_REG			(0x1C)	/*  31:2bit reserved,1:0 bit data byte follow read command */
-#define TWI_LCR_REG			(0x20)	/*  31:6bits reserved  5:0bit for sda&scl control*/
+#define TWI_EFR_REG		(0x1C)	/*  31:2bit reserved,1:0 bit data byte follow read command */
+#define TWI_LCR_REG		(0x20)	/*  31:6bits reserved  5:0bit for sda&scl control*/
 #define TWI_DVFS_REG		(0x24)	/*  31:3bits reserved  2:0bit for dvfs control. only A10 support. */
 #define TWI_DRIVER_CTRL		(0x200)
 #define TWI_DRIVER_CFG		(0x204)
@@ -321,8 +321,8 @@
 #define TWI_SLAVE_MODE		(0)	/* seldom use */
 
 /* The global infor of TWI channel. */
-#define SUNXI_I2C_DEV_NAME		"i2c"
-#define SUNXI_I2C_ID_FORMAT		SUNXI_I2C_DEV_NAME"%u"
+#define SUNXI_TWI_DEV_NAME		"twi"
+#define SUNXI_TWI_ID_FORMAT		SUNXI_TWI_DEV_NAME"%u"
 
 enum {
 	DEBUG_INIT    = 1U << 0,

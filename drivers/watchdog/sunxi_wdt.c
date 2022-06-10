@@ -109,6 +109,9 @@ static int sunxi_wdt_restart(struct watchdog_device *wdt_dev,
 
 	while (1) {
 		mdelay(5);
+		val = readl(wdt_base + regs->wdt_mode);
+		val |= WDT_MODE_EN | KEY_FIELD_MAGIC;
+		writel(val, wdt_base + regs->wdt_mode);
 	}
 	return 0;
 }
@@ -200,6 +203,7 @@ static int sunxi_wdt_resume(struct platform_device *pdev)
 {
 	struct sunxi_wdt_dev *sunxi_wdt = platform_get_drvdata(pdev);
 	if (watchdog_active(&sunxi_wdt->wdt_dev)) {
+		sunxi_wdt_set_timeout(&sunxi_wdt->wdt_dev, sunxi_wdt->wdt_dev.timeout);
 		sunxi_wdt_start(&sunxi_wdt->wdt_dev);
 	}
 

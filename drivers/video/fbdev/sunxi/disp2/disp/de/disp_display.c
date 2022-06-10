@@ -41,9 +41,7 @@ s32 bsp_disp_init(struct disp_bsp_init_para *para)
 	disp_al_init_tcon(para);
 #endif
 	disp_init_lcd(para);
-#if defined(SUPPORT_HDMI)
-	disp_init_hdmi(para);
-#endif
+
 #if defined(SUPPORT_TV)
 	disp_init_tv_para(para);
 #endif
@@ -103,10 +101,6 @@ s32 bsp_disp_exit(u32 mode)
 	disp_exit_enhance();
 #endif
 	disp_exit_mgr();
-#if defined(SUPPORT_HDMI)
-	disp_exit_hdmi();
-#endif
-
 #if defined(SUPPORT_VDPO)
 	disp_exit_vdpo();
 #endif
@@ -226,14 +220,11 @@ s32 disp_device_attached_and_enable(int disp_mgr, int disp_dev,
 			if (config->type == DISP_OUTPUT_TYPE_TV)
 				disp_delay_ms(300);
 
-			if (config->type == DISP_OUTPUT_TYPE_HDMI)
-				disp_delay_ms(1000);
-
 			ret = mgr->device->enable(mgr->device);
 			DE_WRN("attached %s, mgr%d<-->dev%d\n",
 				(ret == 0) ? "ok" : "fail",
 				disp_mgr, disp_dev);
-			DE_WRN("type:%d,mode:%d,fmt:%s,bits:%s,eotf:%d,cs:%d dvi_hdmi:%d, range:%d scan:%d ratio:%d\n",
+			DE_WRN("type:%d,mode:%d,fmt:%s,bits:%s,eotf:%d,cs:%d dvi:%d, range:%d scan:%d ratio:%d\n",
 				config->type,
 				config->mode,
 				(config->format < 4) ?
@@ -242,7 +233,6 @@ s32 disp_device_attached_and_enable(int disp_mgr, int disp_dev,
 				    bits_name[config->bits] : "undef",
 				config->eotf,
 				config->cs,
-				config->dvi_hdmi,
 				config->range,
 				config->scan,
 				config->aspect_ratio);
@@ -309,16 +299,6 @@ s32 bsp_disp_device_switch(int disp, enum disp_output_type output_type,
 	config.bits = DISP_DATA_8BITS;
 	config.eotf = DISP_EOTF_GAMMA22;
 
-	if (config.type == DISP_OUTPUT_TYPE_HDMI) {
-		if (config.mode >= DISP_TV_MOD_720P_50HZ)
-			config.cs = DISP_BT709;
-		else
-			config.cs = DISP_BT601;
-
-		config.eotf = DISP_EOTF_GAMMA22;
-	}
-
-	config.dvi_hdmi = DISP_HDMI;
 	config.range = DISP_COLOR_RANGE_16_235;
 	config.scan = DISP_SCANINFO_NO_DATA;
 	config.aspect_ratio = 8;
@@ -344,24 +324,12 @@ s32 bsp_disp_device_set_config(int disp, struct disp_device_config *config)
 	int disp_dev;
 	int ret = -1;
 
-	if ((config->dvi_hdmi != DISP_DVI) && (config->dvi_hdmi != DISP_HDMI))
-		config->dvi_hdmi = DISP_HDMI;
 	if (config->range > 2)
 		config->range = 0;
 	if (config->scan > 2)
 		config->scan = 0;
 	if (!config->aspect_ratio)
 		config->aspect_ratio = 8;
-	if ((config->type == DISP_OUTPUT_TYPE_HDMI)
-		&& (!config->cs)) {
-		if (config->mode >= DISP_TV_MOD_720P_50HZ)
-			config->cs = DISP_BT709;
-		else
-			config->cs = DISP_BT601;
-
-		if (!config->eotf)
-			config->eotf = DISP_EOTF_GAMMA22;
-	}
 
 	ret = disp_device_attached_and_enable(disp, disp, config);
 	if (ret != 0) {
@@ -621,13 +589,10 @@ s32 bsp_disp_sync_with_hw(struct disp_bsp_init_para *para)
 		config.bits = bits;
 		config.eotf = eotf;
 		config.cs = cs;
-		config.dvi_hdmi = para->boot_info.dvi_hdmi;
 		config.range = para->boot_info.range;
 		config.scan = para->boot_info.scan;
 		config.aspect_ratio = para->boot_info.aspect_ratio;
 
-		if ((config.dvi_hdmi != DISP_DVI) && (config.dvi_hdmi != DISP_HDMI))
-			config.dvi_hdmi = DISP_HDMI;
 		if (config.range > 2)
 			config.range = 0;
 		if (config.scan > 2)
@@ -931,7 +896,6 @@ s32 bsp_disp_get_vb_time(void)
 				vb_time = (start_delay) * time_per_line;
 			}
 		}
-		/* add hdmi support ? */
 	}
 	return vb_time;
 }
@@ -980,7 +944,6 @@ s32 bsp_disp_get_next_vb_time(void)
 				}
 			}
 		}
-		/* add hdmi support ? */
 	}
 	return next_time;
 }
@@ -1007,9 +970,6 @@ s32 bsp_disp_is_in_vb(void)
 			ret =
 			    disp_al_lcd_query_irq(screen_id, LCD_IRQ_TCON0_VBLK,
 						  &info);
-		} else if (bsp_disp_get_output_type(screen_id) ==
-			   DISP_OUTPUT_TYPE_HDMI) {
-			/* FIXME: add hdmi */
 		}
 	}
 	return ret;
@@ -1074,111 +1034,6 @@ s32 bsp_disp_get_screen_width_from_output_type(u32 disp, u32 output_type,
 		dispdev = disp_device_get(disp, DISP_OUTPUT_TYPE_EDP);
 		if (dispdev)
 			dispdev->get_resolution(dispdev, &width, &height);
-	} else if ((output_type == DISP_OUTPUT_TYPE_HDMI)
-		   || (output_type == DISP_OUTPUT_TYPE_TV)
-		   || (output_type == DISP_OUTPUT_TYPE_VGA)
-		   || (output_type == DISP_OUTPUT_TYPE_RTWB)
-		   || (output_type == DISP_OUTPUT_TYPE_VDPO)) {
-		switch (output_mode) {
-		case DISP_TV_MOD_NTSC:
-		case DISP_TV_MOD_480I:
-		case DISP_TV_MOD_480P:
-			width = 720;
-			height = 480;
-			break;
-		case DISP_TV_MOD_PAL:
-		case DISP_TV_MOD_576I:
-		case DISP_TV_MOD_576P:
-			width = 720;
-			height = 576;
-			break;
-		case DISP_TV_MOD_720P_50HZ:
-		case DISP_TV_MOD_720P_60HZ:
-			width = 1280;
-			height = 720;
-			break;
-		case DISP_TV_MOD_1080P_50HZ:
-		case DISP_TV_MOD_1080P_60HZ:
-		case DISP_TV_MOD_1080P_30HZ:
-		case DISP_TV_MOD_1080P_25HZ:
-		case DISP_TV_MOD_1080P_24HZ:
-		case DISP_TV_MOD_1080I_50HZ:
-		case DISP_TV_MOD_1080I_60HZ:
-			width = 1920;
-			height = 1080;
-			break;
-		case DISP_TV_MOD_1080_1920P_60HZ:
-			width = 1080;
-			height = 1920;
-			break;
-		case DISP_TV_MOD_3840_2160P_60HZ:
-		case DISP_TV_MOD_3840_2160P_30HZ:
-		case DISP_TV_MOD_3840_2160P_25HZ:
-		case DISP_TV_MOD_3840_2160P_24HZ:
-			width = 3840;
-			height = 2160;
-			break;
-		case DISP_TV_MOD_4096_2160P_24HZ:
-		case DISP_TV_MOD_4096_2160P_25HZ:
-		case DISP_TV_MOD_4096_2160P_30HZ:
-		case DISP_TV_MOD_4096_2160P_50HZ:
-		case DISP_TV_MOD_4096_2160P_60HZ:
-			width = 4096;
-			height = 2160;
-			break;
-		case DISP_VGA_MOD_800_600P_60:
-			width = 800;
-			height = 600;
-			break;
-		case DISP_VGA_MOD_1024_768P_60:
-			width = 1024;
-			height = 768;
-			break;
-		case DISP_VGA_MOD_1280_768P_60:
-			width = 1280;
-			height = 768;
-			break;
-		case DISP_VGA_MOD_1280_800P_60:
-			width = 1280;
-			height = 800;
-			break;
-		case DISP_VGA_MOD_1366_768P_60:
-			width = 1366;
-			height = 768;
-			break;
-		case DISP_VGA_MOD_1440_900P_60:
-			width = 1440;
-			height = 900;
-			break;
-		case DISP_TV_MOD_1440_2560P_70HZ:
-			width = 1440;
-			height = 2560;
-			break;
-		case DISP_VGA_MOD_1920_1080P_60:
-			width = 1920;
-			height = 1080;
-			break;
-		case DISP_VGA_MOD_1920_1200P_60:
-			width = 1920;
-			height = 1200;
-			break;
-		case DISP_VGA_MOD_1280_720P_60:
-			width = 1280;
-			height = 720;
-			break;
-		case DISP_VGA_MOD_1600_900P_60:
-			width = 1600;
-			height = 900;
-			break;
-		case DISP_TV_MOD_2560_1440P_60HZ:
-			width = 2560;
-			height = 1440;
-			break;
-		case DISP_TV_MOD_3840_1080P_30:
-			width = 3840;
-			height = 1080;
-			break;
-		}
 	}
 	/* FIXME: add other output device res */
 
@@ -1203,151 +1058,10 @@ s32 bsp_disp_get_screen_height_from_output_type(u32 disp, u32 output_type,
 		dispdev = disp_device_get(disp, DISP_OUTPUT_TYPE_EDP);
 		if (dispdev)
 			dispdev->get_resolution(dispdev, &width, &height);
-	} else if ((output_type == DISP_OUTPUT_TYPE_HDMI)
-		   || (output_type == DISP_OUTPUT_TYPE_TV)
-		   || (output_type == DISP_OUTPUT_TYPE_VGA)
-		   || (output_type == DISP_OUTPUT_TYPE_RTWB)
-		   || (output_type == DISP_OUTPUT_TYPE_VDPO)) {
-		switch (output_mode) {
-		case DISP_TV_MOD_NTSC:
-		case DISP_TV_MOD_480I:
-		case DISP_TV_MOD_480P:
-			width = 720;
-			height = 480;
-			break;
-		case DISP_TV_MOD_PAL:
-		case DISP_TV_MOD_576I:
-		case DISP_TV_MOD_576P:
-			width = 720;
-			height = 576;
-			break;
-		case DISP_TV_MOD_720P_50HZ:
-		case DISP_TV_MOD_720P_60HZ:
-			width = 1280;
-			height = 720;
-			break;
-		case DISP_TV_MOD_1080P_50HZ:
-		case DISP_TV_MOD_1080P_60HZ:
-		case DISP_TV_MOD_1080P_30HZ:
-		case DISP_TV_MOD_1080P_25HZ:
-		case DISP_TV_MOD_1080P_24HZ:
-		case DISP_TV_MOD_1080I_50HZ:
-		case DISP_TV_MOD_1080I_60HZ:
-			width = 1920;
-			height = 1080;
-			break;
-		case DISP_TV_MOD_1080_1920P_60HZ:
-			width = 1080;
-			height = 1920;
-			break;
-		case DISP_TV_MOD_3840_2160P_60HZ:
-		case DISP_TV_MOD_3840_2160P_30HZ:
-		case DISP_TV_MOD_3840_2160P_25HZ:
-		case DISP_TV_MOD_3840_2160P_24HZ:
-			width = 3840;
-			height = 2160;
-			break;
-		case DISP_TV_MOD_4096_2160P_24HZ:
-		case DISP_TV_MOD_4096_2160P_25HZ:
-		case DISP_TV_MOD_4096_2160P_30HZ:
-		case DISP_TV_MOD_4096_2160P_50HZ:
-		case DISP_TV_MOD_4096_2160P_60HZ:
-			width = 4096;
-			height = 2160;
-			break;
-		case DISP_VGA_MOD_800_600P_60:
-			width = 800;
-			height = 600;
-			break;
-		case DISP_VGA_MOD_1024_768P_60:
-			width = 1024;
-			height = 768;
-			break;
-		case DISP_VGA_MOD_1280_768P_60:
-			width = 1280;
-			height = 768;
-			break;
-		case DISP_VGA_MOD_1280_800P_60:
-			width = 1280;
-			height = 800;
-			break;
-		case DISP_VGA_MOD_1366_768P_60:
-			width = 1366;
-			height = 768;
-			break;
-		case DISP_VGA_MOD_1440_900P_60:
-			width = 1440;
-			height = 900;
-			break;
-		case DISP_TV_MOD_1440_2560P_70HZ:
-			width = 1440;
-			height = 2560;
-			break;
-		case DISP_VGA_MOD_1920_1080P_60:
-			width = 1920;
-			height = 1080;
-			break;
-		case DISP_VGA_MOD_1920_1200P_60:
-			width = 1920;
-			height = 1200;
-			break;
-		case DISP_VGA_MOD_1280_720P_60:
-			width = 1280;
-			height = 720;
-			break;
-		case DISP_VGA_MOD_1600_900P_60:
-			width = 1600;
-			height = 900;
-			break;
-		case DISP_TV_MOD_2560_1440P_60HZ:
-			width = 2560;
-			height = 1440;
-			break;
-		case DISP_TV_MOD_3840_1080P_30:
-			width = 3840;
-			height = 1080;
-			break;
-		}
 	}
 	/* FIXME: add other output device res */
 
 	return height;
-}
-
-s32 bsp_disp_set_hdmi_func(struct disp_device_func *func)
-{
-	u32 disp = 0;
-	u32 num_screens = 0;
-	s32 ret = 0, registered_cnt = 0;
-
-	num_screens = bsp_disp_feat_get_num_screens();
-	for (disp = 0; disp < num_screens; disp++) {
-		struct disp_device *hdmi;
-
-		hdmi = disp_device_find(disp, DISP_OUTPUT_TYPE_HDMI);
-		if (hdmi) {
-			if (hdmi->set_func) {
-				ret = hdmi->set_func(hdmi, func);
-				if (ret == 0)
-					registered_cnt++;
-			} else {
-				pr_err("disp hdmi device is NOT registered!\n");
-				return -1;
-			}
-		}
-	}
-	if (registered_cnt != 0) {
-		DE_INF("registered!!\n");
-		gdisp.hdmi_registered = 1;
-		if (gdisp.init_para.start_process)
-			gdisp.init_para.start_process();
-
-		return 0;
-	} else {
-		pr_err("NO hdmi funcs to registered!!!\n");
-	}
-
-	return -1;
 }
 
 s32 bsp_disp_set_vdpo_func(struct disp_tv_func *func)
@@ -1411,107 +1125,6 @@ s32 bsp_disp_set_edp_func(struct disp_tv_func *func)
 
 	return -1;
 }
-
-s32 bsp_disp_hdmi_check_support_mode(u32 disp, enum disp_output_type mode)
-{
-	u32 num_screens = 0;
-	s32 ret = 0;
-
-	num_screens = bsp_disp_feat_get_num_screens();
-	for (disp = 0; disp < num_screens; disp++) {
-		struct disp_device *hdmi;
-
-		hdmi = disp_device_find(disp, DISP_OUTPUT_TYPE_HDMI);
-		if (hdmi && hdmi->check_support_mode) {
-			ret = hdmi->check_support_mode(hdmi, (u32) mode);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-s32 bsp_disp_hdmi_set_detect(bool hpd)
-{
-	u32 num_screens = 0;
-	u32 disp;
-	s32 ret = 0;
-
-	num_screens = bsp_disp_feat_get_num_screens();
-	for (disp = 0; disp < num_screens; disp++) {
-		struct disp_device *hdmi;
-
-		hdmi = disp_device_find(disp, DISP_OUTPUT_TYPE_HDMI);
-		if (hdmi && hdmi->set_detect) {
-			ret = hdmi->set_detect(hdmi, hpd);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-s32 bsp_disp_hdmi_cec_standby_request(void)
-{
-	u32 num_screens = 0;
-	s32 ret = 0;
-	u32 disp;
-
-	num_screens = bsp_disp_feat_get_num_screens();
-	for (disp = 0; disp < num_screens; disp++) {
-		struct disp_device *hdmi;
-
-		hdmi = disp_device_find(disp, DISP_OUTPUT_TYPE_HDMI);
-		if (hdmi && hdmi->cec_standby_request) {
-			ret = hdmi->cec_standby_request(hdmi);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-s32 bsp_disp_hdmi_cec_send_one_touch_play(void)
-{
-	u32 num_screens = 0;
-	s32 ret = 0;
-	u32 disp;
-
-	num_screens = bsp_disp_feat_get_num_screens();
-	for (disp = 0; disp < num_screens; disp++) {
-		struct disp_device *hdmi;
-
-		hdmi = disp_device_find(disp, DISP_OUTPUT_TYPE_HDMI);
-		if (hdmi && hdmi->cec_send_one_touch_play) {
-			ret = hdmi->cec_send_one_touch_play(hdmi);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-s32 bsp_disp_hdmi_get_color_format(void)
-{
-	u32 num_screens = 0;
-	s32 ret = 0;
-	u32 disp;
-
-	num_screens = bsp_disp_feat_get_num_screens();
-	for (disp = 0; disp < num_screens; disp++) {
-		struct disp_device *hdmi;
-
-		hdmi = disp_device_find(disp, DISP_OUTPUT_TYPE_HDMI);
-		if (hdmi && hdmi->get_input_csc) {
-			ret = hdmi->get_input_csc(hdmi);
-			break;
-		}
-	}
-
-	return ret;
-
-}
-
 s32 bsp_disp_tv_set_hpd(u32 state)
 {
 #if defined SUPPORT_TV
@@ -1625,11 +1238,6 @@ void LCD_CLOSE_FUNC(u32 disp, LCD_FUNC func, u32 delay)
 s32 bsp_disp_get_lcd_registered(u32 disp)
 {
 	return gdisp.lcd_registered[disp];
-}
-
-s32 bsp_disp_get_hdmi_registered(void)
-{
-	return gdisp.hdmi_registered;
 }
 
 s32 bsp_disp_get_tv_registered(void)

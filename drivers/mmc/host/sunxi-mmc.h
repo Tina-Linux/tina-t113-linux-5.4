@@ -46,7 +46,7 @@
 #define __SUNXI_MMC_H__
 
 #define DRIVER_NAME "sunxi-mmc"
-#define DRIVER_RIVISION "v4.21 2021-05-24 16:10"
+#define DRIVER_RIVISION "v4.20 2021-05-12 11:02"
 #define DRIVER_VERSION "SD/MMC/SDIO Host Controller Driver(" DRIVER_RIVISION ")"
 
 #if defined CONFIG_FPGA_V4_PLATFORM || defined CONFIG_FPGA_V7_PLATFORM

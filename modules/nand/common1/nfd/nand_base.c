@@ -11,7 +11,7 @@
 *****************************************************************************/
 
 #include "nand_base.h"
-/*#include "../phy-nand/nand-partition2/nand_info_init_v2.h"*/
+#include "../phy-nand/nand-partition2/nand_info_init_v2.h"
 #include "../phy-nand/nand_physic_interface.h"
 #include "../phy-nand/rawnand/controller/ndfc_base.h"
 #include "nand_osal_for_linux.h"
@@ -22,8 +22,6 @@ struct sunxi_ndfc aw_ndfc;
 struct nand_controller_info g_nctri_data[2] = {0};
 static unsigned int channel0;
 
-
-extern int nand_info_init(struct _nand_info *nand_info, int state);
 
 /*****************************************************************************
 *Name         :
@@ -198,8 +196,7 @@ int nand_init_real(void)
 
 		set_cache_level(p_nand_info, nand_cache_level);
 		set_capacity_level(p_nand_info, nand_capacity_level);
-		/*ret = nand_info_init(p_nand_info, 0, 8, NULL);*/
-		ret = nand_info_init(p_nand_info, 0);
+		ret = nand_info_init(p_nand_info, 0, 8, NULL);
 		if (ret != 0) {
 			nand_dbg_err("nand_info_init error\n");
 			return ret;
@@ -538,8 +535,7 @@ int __init nand_init(void)
 
 		set_cache_level(p_nand_info, nand_cache_level);
 		set_capacity_level(p_nand_info, nand_capacity_level);
-		/*ret = nand_info_init(p_nand_info, 0, 8, NULL);*/
-		ret = nand_info_init(p_nand_info, 0);
+		ret = nand_info_init(p_nand_info, 0, 8, NULL);
 		if (ret != 0) {
 			nand_dbg_err("nand_info_init error\n");
 			return ret;

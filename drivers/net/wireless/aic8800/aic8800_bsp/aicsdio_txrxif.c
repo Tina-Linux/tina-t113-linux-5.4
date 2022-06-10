@@ -200,17 +200,21 @@ int aicwf_process_rxframes(struct aicwf_rx_priv *rx_priv)
 				else
 					adjust_len = aggr_len;
 
-				skb_inblock = __dev_alloc_skb(aggr_len+4, GFP_KERNEL);
-				if (skb_inblock == NULL) {
-					txrx_err("no more space!\n");
-					aicwf_dev_skb_free(skb);
-					return -EBADE;
+			   skb_inblock = __dev_alloc_skb(aggr_len+4, GFP_KERNEL);
+			   if (skb_inblock == NULL) {
+				   txrx_err("no more space!\n");
+				   aicwf_dev_skb_free(skb);
+				   return -EBADE;
 				}
 
 				skb_put(skb_inblock, aggr_len+4);
 				memcpy(skb_inblock->data, data, aggr_len+4);
 				if ((*(skb_inblock->data + 2) & 0x7f) == SDIO_TYPE_CFG_CMD_RSP)
 					rwnx_rx_handle_msg(rx_priv->sdiodev, (struct ipc_e2a_msg *)(skb_inblock->data + 4));
+				#if 0
+				if ((*(skb_inblock->data + 2) & 0x7f) == SDIO_TYPE_CFG_DATA_CFM)
+					aicwf_sdio_host_tx_cfm_handler(&(rx_priv->sdiodev->rwnx_hw->sdio_env), (u32 *)(skb_inblock->data + 4));
+				#endif
 				skb_pull(skb, adjust_len+4);
 			}
 		}

@@ -61,13 +61,16 @@ static inline int rwnx_rx_chan_pre_switch_ind(struct rwnx_hw *rwnx_hw,
 	struct rwnx_vif *rwnx_vif;
 	int chan_idx = ((struct mm_channel_pre_switch_ind *)msg->param)->chan_index;
 
+	RWNX_DBG(RWNX_FN_ENTRY_STR);
+
 	REG_SW_SET_PROFILING_CHAN(rwnx_hw, SW_PROF_CHAN_CTXT_PSWTCH_BIT);
 
 #ifdef CONFIG_RWNX_FULLMAC
 	list_for_each_entry(rwnx_vif, &rwnx_hw->vifs, list) {
-		if (rwnx_vif->up && rwnx_vif->ch_index == chan_idx) {
-			rwnx_txq_vif_stop(rwnx_vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
-		}
+	if (rwnx_vif->up && rwnx_vif->ch_index == chan_idx) {
+		printk("rwnx_txq_vif_stop\r\n");
+		rwnx_txq_vif_stop(rwnx_vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
+	}
 	}
 #endif /* CONFIG_RWNX_FULLMAC */
 
@@ -85,6 +88,8 @@ static inline int rwnx_rx_chan_switch_ind(struct rwnx_hw *rwnx_hw,
 	bool roc     = ((struct mm_channel_switch_ind *)msg->param)->roc;
 	bool roc_tdls = ((struct mm_channel_switch_ind *)msg->param)->roc_tdls;
 
+	RWNX_DBG(RWNX_FN_ENTRY_STR);
+
 	REG_SW_SET_PROFILING_CHAN(rwnx_hw, SW_PROF_CHAN_CTXT_SWTCH_BIT);
 
 #ifdef CONFIG_RWNX_FULLMAC
@@ -92,16 +97,16 @@ static inline int rwnx_rx_chan_switch_ind(struct rwnx_hw *rwnx_hw,
 		u8 vif_index = ((struct mm_channel_switch_ind *)msg->param)->vif_index;
 		list_for_each_entry(rwnx_vif, &rwnx_hw->vifs, list) {
 			if (rwnx_vif->vif_index == vif_index) {
-				rwnx_vif->roc_tdls = true;
-				rwnx_txq_tdls_sta_start(rwnx_vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
+			rwnx_vif->roc_tdls = true;
+			rwnx_txq_tdls_sta_start(rwnx_vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
 			}
-		}
+	}
 	} else if (!roc) {
-		list_for_each_entry(rwnx_vif, &rwnx_hw->vifs, list) {
-			if (rwnx_vif->up && rwnx_vif->ch_index == chan_idx) {
-				rwnx_txq_vif_start(rwnx_vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
-			}
+	list_for_each_entry(rwnx_vif, &rwnx_hw->vifs, list) {
+		if (rwnx_vif->up && rwnx_vif->ch_index == chan_idx) {
+		rwnx_txq_vif_start(rwnx_vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
 		}
+	}
 	} else {
 		/* Retrieve the allocated RoC element */
 		struct rwnx_roc_elem *roc_elem = rwnx_hw->roc_elem;
@@ -205,14 +210,10 @@ static inline int rwnx_rx_remain_on_channel_exp_ind(struct rwnx_hw *rwnx_hw,
 	/* Retrieve the allocated RoC element */
 	struct rwnx_roc_elem *roc_elem = rwnx_hw->roc_elem;
 	/* Get VIF on which RoC has been started */
-	struct rwnx_vif *rwnx_vif;
+	struct rwnx_vif *rwnx_vif = container_of(roc_elem->wdev, struct rwnx_vif, wdev);
 
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
-	if (!roc_elem)
-		return 0;
-
-	rwnx_vif = container_of(roc_elem->wdev, struct rwnx_vif, wdev);
 	/* For debug purpose (use ftrace kernel option) */
 	trace_roc_exp(rwnx_vif->vif_index);
 
@@ -287,6 +288,8 @@ static inline int rwnx_rx_channel_survey_ind(struct rwnx_hw *rwnx_hw,
 	int idx = rwnx_freq_to_idx(rwnx_hw, ind->freq);
 	// Get the survey
 	struct rwnx_survey_info *rwnx_survey;
+
+	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
 	if (idx >  ARRAY_SIZE(rwnx_hw->survey))
 		return 0;
@@ -487,8 +490,7 @@ static inline int rwnx_rx_ps_change_ind(struct rwnx_hw *rwnx_hw,
 	} else if (rwnx_hw->adding_sta) {
 		sta->ps.active = ind->ps_state ? true : false;
 	} else {
-		if (rwnx_hw->vif_table[sta->vif_idx]->ndev)
-			netdev_err(rwnx_hw->vif_table[sta->vif_idx]->ndev,
+		netdev_err(rwnx_hw->vif_table[sta->vif_idx]->ndev,
 				   "Ignore PS mode change on invalid sta\n");
 	}
 
@@ -554,6 +556,7 @@ static inline int rwnx_rx_scanu_start_cfm(struct rwnx_hw *rwnx_hw,
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
 	scanning = 0;
+	//rwnx_ipc_elem_var_deallocs(rwnx_hw, &rwnx_hw->scan_ie);
 	if (rwnx_hw->scan_request) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 8, 0)
 		struct cfg80211_scan_info info = {
@@ -584,6 +587,7 @@ static inline int rwnx_rx_scanu_result_ind(struct rwnx_hw *rwnx_hw,
 	size_t ielen;
 	u16 capability, beacon_interval;
 	u16 len = ind->length;
+	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
 	chan = ieee80211_get_channel(rwnx_hw->wiphy, ind->center_freq);
 
@@ -715,9 +719,9 @@ static inline int rwnx_rx_sm_connect_ind(struct rwnx_hw *rwnx_hw,
 		memcpy(sta->ac_param, ind->ac_param, sizeof(sta->ac_param));
 		rwnx_txq_sta_init(rwnx_hw, sta, txq_status);
 		rwnx_txq_tdls_vif_init(rwnx_vif);
-#ifdef CONFIG_DEBUG_FS
+		#if 0
 		rwnx_dbgfs_register_rc_stat(rwnx_hw, sta);
-#endif
+		#endif
 		rwnx_mu_group_sta_init(sta, NULL);
 		/* Look for TDLS Channel Switch Prohibited flag in the Extended Capability
 		 * Information Element*/
@@ -985,9 +989,8 @@ static inline int rwnx_rx_mesh_peer_update_ind(struct rwnx_hw *rwnx_hw,
 				}
 
 				rwnx_txq_sta_init(rwnx_hw, rwnx_sta, txq_status);
-#ifdef CONFIG_DEBUG_FS
 				rwnx_dbgfs_register_rc_stat(rwnx_hw, rwnx_sta);
-#endif
+
 #ifdef CONFIG_RWNX_BFMER
 				// TODO: update indication to contains vht capabilties
 				if (rwnx_hw->mod_params->bfmer)
@@ -1008,9 +1011,7 @@ static inline int rwnx_rx_mesh_peer_update_ind(struct rwnx_hw *rwnx_hw,
 				list_del_init(&rwnx_sta->list);
 
 				rwnx_txq_sta_deinit(rwnx_hw, rwnx_sta);
-#ifdef CONFIG_DEBUG_FS
 				rwnx_dbgfs_unregister_rc_stat(rwnx_hw, rwnx_sta);
-#endif
 			} else {
 				WARN_ON(0);
 			}
@@ -1026,9 +1027,7 @@ static inline int rwnx_rx_mesh_peer_update_ind(struct rwnx_hw *rwnx_hw,
 			list_del_init(&rwnx_sta->list);
 
 			rwnx_txq_sta_deinit(rwnx_hw, rwnx_sta);
-#ifdef CONFIG_DEBUG_FS
 			rwnx_dbgfs_unregister_rc_stat(rwnx_hw, rwnx_sta);
-#endif
 		} else {
 			WARN_ON(0);
 		}
@@ -1165,6 +1164,8 @@ static inline int rwnx_rx_dbg_error_ind(struct rwnx_hw *rwnx_hw,
 {
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
 
+	rwnx_error_ind(rwnx_hw);
+
 	return 0;
 }
 
@@ -1246,44 +1247,3 @@ void rwnx_rx_handle_msg(struct rwnx_hw *rwnx_hw, struct ipc_e2a_msg *msg)
 	rwnx_hw->cmd_mgr->msgind(rwnx_hw->cmd_mgr, msg,
 							msg_hdlrs[MSG_T(msg->id)][MSG_I(msg->id)]);
 }
-
-void rwnx_rx_handle_print(struct rwnx_hw *rwnx_hw, u8 *msg, u32 len)
-{
-	u8 *data_end = NULL;
-	(void)data_end;
-
-	if (!rwnx_hw || !rwnx_hw->fwlog_en) {
-		pr_err("FWLOG-OVFL: %s", msg);
-		return;
-	}
-
-	printk("FWLOG: %s", msg);
-
-#ifdef CONFIG_RWNX_DEBUGFS
-	data_end = rwnx_hw->debugfs.fw_log.buf.dataend;
-
-	if (!rwnx_hw->debugfs.fw_log.buf.data)
-		return ;
-
-	//printk("end=%lx, len=%d\n", (unsigned long)rwnx_hw->debugfs.fw_log.buf.end, len);
-
-	spin_lock_bh(&rwnx_hw->debugfs.fw_log.lock);
-
-	if (rwnx_hw->debugfs.fw_log.buf.end + len > data_end) {
-		int rem = data_end - rwnx_hw->debugfs.fw_log.buf.end;
-		memcpy(rwnx_hw->debugfs.fw_log.buf.end, msg, rem);
-		memcpy(rwnx_hw->debugfs.fw_log.buf.data, &msg[rem], len - rem);
-		rwnx_hw->debugfs.fw_log.buf.end = rwnx_hw->debugfs.fw_log.buf.data + (len - rem);
-	} else {
-		memcpy(rwnx_hw->debugfs.fw_log.buf.end, msg, len);
-		rwnx_hw->debugfs.fw_log.buf.end += len;
-	}
-
-	rwnx_hw->debugfs.fw_log.buf.size += len;
-	if (rwnx_hw->debugfs.fw_log.buf.size > FW_LOG_SIZE)
-		rwnx_hw->debugfs.fw_log.buf.size = FW_LOG_SIZE;
-
-	spin_unlock_bh(&rwnx_hw->debugfs.fw_log.lock);
-#endif
-}
-

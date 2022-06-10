@@ -69,4 +69,3 @@ obj-$(CONFIG_KEYBOARD_TM2_TOUCHKEY)	+= tm2-touchkey.o
 obj-$(CONFIG_KEYBOARD_TWL4030)		+= twl4030_keypad.o
 obj-$(CONFIG_KEYBOARD_XTKBD)		+= xtkbd.o
 obj-$(CONFIG_KEYBOARD_SUNXI)		+= sunxi-keyboard.o
-obj-$(CONFIG_KEYBOARD_TPKEY) 		+= tp-key.o

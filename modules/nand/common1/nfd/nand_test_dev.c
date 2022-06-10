@@ -233,8 +233,7 @@ int nand_driver_test_init(void)
 		return 1;
 	}
 
-	/*ret = nand_info_init(p_nand_info2, 0, 8, NULL);*/
-	ret = nand_info_init(p_nand_info2, 0);
+	ret = nand_info_init(p_nand_info2, 0, 8, NULL);
 	if (ret != 0) {
 		nand_dbg_err("nand_driver_test_init fail3!\n");
 		return ret;

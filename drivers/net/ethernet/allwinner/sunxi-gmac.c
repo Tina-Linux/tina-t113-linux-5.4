@@ -43,6 +43,7 @@
 #include <rtk8363.h>
 #include <rtk_types.h>
 #include <port.h>
+#include <stat.h>
 #include <rtk_switch.h>
 #include <rtk_error.h>
 #include <rtl8367c_asicdrv_port.h>
@@ -169,6 +170,9 @@ struct geth_priv {
 };
 
 #ifdef CONFIG_RTL8363_NB
+rtk_port_mac_ability_t mac_cfg;
+rtk_stat_counter_t cntr;
+rtk_mode_ext_t mode;
 struct net_device *ndev = NULL;
 struct geth_priv *priv;
 #endif
@@ -565,6 +569,33 @@ static void geth_power_off(struct geth_priv *priv)
 }
 
 #ifdef CONFIG_RTL8363_NB
+/* rtl8363nb_vb switch init. */
+static int rtl8363nb_vb_init(void)
+{
+	pr_info("%s->%d rtk8363 init=====\n", __func__, __LINE__);
+
+	if (rtk_switch_init() != RT_ERR_OK) {
+		pr_info("rtk switch init failed!\n");
+		return -1;
+	}
+	mode = MODE_EXT_RGMII;
+	mac_cfg.forcemode = MAC_FORCE;
+	mac_cfg.speed = SPD_1000M;
+	mac_cfg.duplex = FULL_DUPLEX;
+	mac_cfg.link = PORT_LINKUP;
+	mac_cfg.nway = DISABLED;
+	mac_cfg.txpause = ENABLED;
+	mac_cfg.rxpause = ENABLED;
+
+	if (rtk_port_macForceLinkExt_set(EXT_PORT0, mode, &mac_cfg) != RT_ERR_OK) {
+		pr_info("macForceLinkExt set failed!\n");
+		return -1;
+	}
+
+	rtk_port_rgmiiDelayExt_set(EXT_PORT0, 1, 0);
+	rtk_port_phyEnableAll_set(ENABLED);
+}
+
 /* rtl8363 switch mdc/mdio interface operations */
 int rtk_mdio_read(u32 len, u8 phy_adr, u8 reg, u32 *value)
 {
@@ -638,11 +669,16 @@ static void geth_adjust_link(struct net_device *ndev)
 	struct phy_device *phydev = ndev->phydev;
 	unsigned long flags;
 	int new_state = 0;
-
 	if (!phydev)
 		return;
 
 	spin_lock_irqsave(&priv->lock, flags);
+#ifdef CONFIG_RTL8363_NB
+	priv->speed = 1000;
+	priv->duplex = 1;
+	sunxi_set_link_mode(priv->base, 1, 1000);
+	phy_print_status(phydev);
+#else
 	if (phydev->link) {
 		/* Now we make sure that we can be in full duplex mode.
 		 * If not, we operate in half-duplex mode.
@@ -682,6 +718,7 @@ static void geth_adjust_link(struct net_device *ndev)
 
 	if (new_state)
 		phy_print_status(phydev);
+#endif
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 }
@@ -722,12 +759,15 @@ static int geth_phy_init(struct net_device *ndev)
 	/*rtl8363 switch can not use kernel's phy interface, neeed to redefine hook function.*/
 	new_bus->read = &rtk_phy_read;
 	new_bus->write = &rtk_phy_write;
-	//read reg 0x02
-        sunxi_mdio_write(priv->base, priv->phy_addr, 31, 0x000E);
-        sunxi_mdio_write(priv->base, priv->phy_addr, 23, 0x02);
-        sunxi_mdio_write(priv->base, priv->phy_addr, 21, 0x1);
-        sunxi_mdio_read(priv->base, priv->phy_addr, 25);
-	printk("%s->%d flyranchao=====> reg 0x02 = %x!\n", __func__, __LINE__, sunxi_mdio_read(priv->base, priv->phy_addr, 25));
+#if 0
+	//read reg 0x1b00
+	sunxi_mdio_write(priv->base, priv->phy_addr, 31, 0x000E);
+	sunxi_mdio_write(priv->base, priv->phy_addr, 23, 0x1b00);
+	sunxi_mdio_write(priv->base, priv->phy_addr, 21, 0x1);
+	sunxi_mdio_read(priv->base, priv->phy_addr, 25);
+	pr_info("%s->%d =====> reg 0x1b00 = %x!\n", __func__, __LINE__, \
+			sunxi_mdio_read(priv->base, priv->phy_addr, 25));
+#endif
 #else
 	new_bus->read = &geth_mdio_read;
 	new_bus->write = &geth_mdio_write;
@@ -770,9 +810,9 @@ static int geth_phy_init(struct net_device *ndev)
 		netdev_err(ndev, "Could not attach to PHY\n");
 		goto err;
 	} else {
-		netdev_info(ndev, "%s: Type(%d) PHY ID %08x at %d IRQ %s (%s)\n",
+		netdev_info(ndev, "%s: -Type(%d) PHY ID %08x at %d IRQ %s (%s) priv->phy_ext: %d\n",
 			    ndev->name, phydev->interface, phydev->phy_id,
-			    phydev->mdio.addr, "poll", dev_name(&phydev->mdio.dev));
+			    phydev->mdio.addr, "poll", dev_name(&phydev->mdio.dev), priv->phy_ext);
 	}
 
 	//phydev->supported &= PHY_GBIT_FEATURES;
@@ -825,7 +865,7 @@ static int geth_phy_release(struct net_device *ndev)
 	int value = 0;
 
 	/* Stop and disconnect the PHY */
-	if (phydev)
+	if (phydev && phy_is_started(phydev))
 		phy_stop(phydev);
 
 	priv->link = PHY_DOWN;
@@ -1493,6 +1533,10 @@ static netdev_tx_t geth_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 		return NETDEV_TX_BUSY;
 	}
+#ifdef CONFIG_RTL8363_NB
+//	rtk_stat_port_get(EXT_PORT0, STAT_IfInOctets, &cntr);
+//	pr_info("%s->%d ======DATA:%llu ============\n", __func__, __LINE__, cntr);
+#endif
 
 	csum_insert = (skb->ip_summed == CHECKSUM_PARTIAL);
 	entry = priv->tx_dirty;
@@ -1503,7 +1547,7 @@ static netdev_tx_t geth_xmit(struct sk_buff *skb, struct net_device *ndev)
 	priv->tx_sk[entry] = skb;
 
 #ifdef PKT_DEBUG
-	printk("======TX PKT DATA: ============\n");
+	pr_info("======TX PKT DATA: ============\n");
 	/* dump the packet */
 	print_hex_dump(KERN_DEBUG, "skb->data: ", DUMP_PREFIX_NONE,
 		       16, 1, skb->data, 64, true);
@@ -1563,8 +1607,8 @@ static netdev_tx_t geth_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 
 #ifdef DEBUG
-	printk("=======TX Descriptor DMA: 0x%08llx\n", priv->dma_tx_phy);
-	printk("Tx pointor: dirty: %d, clean: %d\n", priv->tx_dirty, priv->tx_clean);
+	pr_info("=======TX Descriptor DMA: 0x%08llx\n", priv->dma_tx_phy);
+	pr_info("Tx pointor: dirty: %d, clean: %d\n", priv->tx_dirty, priv->tx_clean);
 	desc_print(priv->dma_tx, dma_desc_tx);
 #endif
 	sunxi_tx_poll(priv->base);
@@ -1607,7 +1651,7 @@ static int geth_rx(struct geth_priv *priv, int limit)
 		}
 
 #ifdef PKT_DEBUG
-		printk("======RX PKT DATA: ============\n");
+		pr_info("======RX PKT DATA: ============\n");
 		/* dump the packet */
 		print_hex_dump(KERN_DEBUG, "skb->data: ", DUMP_PREFIX_NONE,
 				16, 1, skb->data, 64, true);
@@ -1639,8 +1683,8 @@ static int geth_rx(struct geth_priv *priv, int limit)
 
 #ifdef DEBUG
 	if (rxcount > 0) {
-		printk("======RX Descriptor DMA: 0x%08llx=\n", priv->dma_rx_phy);
-		printk("RX pointor: dirty: %d, clean: %d\n", priv->rx_dirty, priv->rx_clean);
+		pr_info("======RX Descriptor DMA: 0x%08llx=\n", priv->dma_rx_phy);
+		pr_info("RX pointor: dirty: %d, clean: %d\n", priv->rx_dirty, priv->rx_clean);
 		desc_print(priv->dma_rx, dma_desc_rx);
 	}
 #endif
@@ -2172,32 +2216,7 @@ static int geth_probe(struct platform_device *pdev)
 		goto hw_err;
 	}
 #ifdef CONFIG_RTL8363_NB
-	printk("%s->%d rtk8363 init=====\n", __func__, __LINE__);
-	rtk_port_mac_ability_t mac_cfg;
-	rtk_mode_ext_t mode;
-
-	if(rtk_switch_init() != RT_ERR_OK)
-	{
-		printk("rtk switch init failed!\n");
-		return -1;
-	}
-	mode = MODE_EXT_RGMII;
-	mac_cfg.forcemode = MAC_NORMAL;
-	mac_cfg.speed = SPD_100M;
-	mac_cfg.duplex = FULL_DUPLEX;
-	mac_cfg.link = PORT_LINKUP;
-	mac_cfg.nway = DISABLED;
-	mac_cfg.txpause = ENABLED;
-	mac_cfg.rxpause = ENABLED;
-
-	if(rtk_port_macForceLinkExt_set(EXT_PORT0, mode, &mac_cfg) != RT_ERR_OK)
-	{
-		printk("macForceLinkExt set failed!\n");
-	        return -1;
-	}
-
-	rtk_port_rgmiiDelayExt_set(EXT_PORT0, 1, 0);
-	rtk_port_phyEnableAll_set(ENABLED);
+	rtl8363nb_vb_init();
 #endif
 
 	/* setup the netdevice, fill the field of netdevice */

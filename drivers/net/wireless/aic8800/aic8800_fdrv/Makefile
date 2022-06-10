@@ -22,6 +22,8 @@ CONFIG_RWNX_FHOST ?= n
 #
 # DEBUG OPTIONS
 CONFIG_RWNX_UM_HELPER_DFLT ?= "/dini/dini_bin/rwnx_umh.sh"
+CONFIG_AIC_FW_PATH = "/vendor/etc/firmware"
+export CONFIG_AIC_FW_PATH
 
 #
 # FW ARCH:
@@ -33,6 +35,7 @@ CONFIG_RWNX_OLD_IPC ?= n
 
 # Support of P2P DebugFS for enabling/disabling NoA and OppPS
 CONFIG_RWNX_P2P_DEBUGFS := n
+CONFIG_DEBUG_FS := n
 #
 # } // WAITING FOR KCONFIG
 #
@@ -102,6 +105,7 @@ aic8800_fdrv-y := \
 
 aic8800_fdrv-$(CONFIG_RWNX_RADAR)       += rwnx_radar.o
 aic8800_fdrv-$(CONFIG_DEBUG_FS)         += rwnx_debugfs.o
+aic8800_fdrv-$(CONFIG_DEBUG_FS)         += rwnx_fw_dump.o
 aic8800_fdrv-$(CONFIG_DEBUG_FS)         += rwnx_fw_trace.o
 aic8800_fdrv-$(CONFIG_NL80211_TESTMODE) += rwnx_testmode.o
 aic8800_fdrv-$(CONFIG_RWNX_BFMER)       += rwnx_bfmer.o
@@ -136,7 +140,6 @@ ccflags-$(CONFIG_PLATFORM_ALLWINNER) += -DCONFIG_PLATFORM_ALLWINNER
 ccflags-$(CONFIG_START_FROM_BOOTROM) += -DCONFIG_START_FROM_BOOTROM
 ccflags-$(CONFIG_PMIC_SETTING) += -DCONFIG_PMIC_SETTING
 ccflags-$(CONFIG_ROM_PATCH_EN) += -DCONFIG_ROM_PATCH_EN
-
 LOCAL_CODE_VERSION := $(shell expr $(VERSION) \* 256 + $(PATCHLEVEL))
 # 1038 is LINUX_KERENL_VERSION 4.14
 ifeq ($(shell [ $(LOCAL_CODE_VERSION) -lt 1038 ] && echo y),y)
@@ -149,7 +152,6 @@ ccflags-y += -DCONFIG_RWNX_FULLMAC
 ccflags-y += -I$(srctree)
 ccflags-y += -I$(srctree)/$(src)
 ccflags-y += -I$(srctree)/$(src)/../aic8800_bsp
-ccflags-y += -DCONFIG_AIC_FW_PATH=\"$(CONFIG_AIC_FW_PATH)\"
 ccflags-$(CONFIG_RWNX_RADAR) += -DCONFIG_RWNX_RADAR
 ccflags-$(CONFIG_RWNX_MON_DATA) += -DCONFIG_RWNX_MON_DATA
 ccflags-$(CONFIG_RWNX_BFMER) += -DCONFIG_RWNX_BFMER

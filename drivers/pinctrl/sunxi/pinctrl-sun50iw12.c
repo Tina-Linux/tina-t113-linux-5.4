@@ -942,9 +942,6 @@ static const struct sunxi_pinctrl_desc sun50iw12_pinctrl_data = {
 
 static int sun50iw12_pinctrl_probe(struct platform_device *pdev)
 {
-#if IS_ENABLED(CONFIG_PINCTRL_SUNXI_DEBUGFS)
-	dev_set_name(&pdev->dev, "pio");
-#endif
 	return sunxi_pinctrl_init(pdev, &sun50iw12_pinctrl_data);
 }
 

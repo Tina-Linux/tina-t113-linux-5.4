@@ -190,13 +190,6 @@ enum dbg_msg_tag {
 	DBG_MEM_MASK_WRITE_REQ,
 	/// Memory mask write confirm
 	DBG_MEM_MASK_WRITE_CFM,
-
-	DBG_RFTEST_CMD_REQ,
-	DBG_RFTEST_CMD_CFM,
-	DBG_BINDING_REQ,
-	DBG_BINDING_CFM,
-	DBG_BINDING_IND,
-
 	/// Max number of Debug messages
 	DBG_MAX,
 };
@@ -264,14 +257,6 @@ struct dbg_start_app_cfm {
 	u32 bootstatus;
 };
 
-struct dbg_binding_ind {
-	u8 enc_data[16];
-};
-
-struct dbg_binding_req {
-	u8 driver_data[16];
-};
-
 int rwnx_send_dbg_mem_read_req(struct aic_sdio_dev *sdiodev, u32 mem_addr,
 							   struct dbg_mem_read_cfm *cfm);
 int rwnx_send_dbg_mem_block_write_req(struct aic_sdio_dev *sdiodev, u32 mem_addr,
@@ -281,20 +266,21 @@ int rwnx_send_dbg_mem_mask_write_req(struct aic_sdio_dev *sdiodev, u32 mem_addr,
 									 u32 mem_mask, u32 mem_data);
 int rwnx_send_dbg_start_app_req(struct aic_sdio_dev *sdiodev, u32 boot_addr, u32 boot_type, struct dbg_start_app_cfm *start_app_cfm);
 
-int rwnx_send_dbg_binding_req(struct aic_sdio_dev *sdiodev, u8 *dout, u8 *binding_status);
 void rwnx_rx_handle_msg(struct aic_sdio_dev *sdiodev, struct ipc_e2a_msg *msg);
 
 int aicbsp_platform_init(struct aic_sdio_dev *sdiodev);
 void aicbsp_platform_deinit(struct aic_sdio_dev *sdiodev);
 int aicbsp_driver_fw_init(struct aic_sdio_dev *sdiodev);
 
-#define AICBSP_FW_PATH              CONFIG_AIC_FW_PATH
+#define AICBSP_FW_PATH              "/vendor/etc/firmware"
 #define AICBSP_FW_PATH_MAX          200
 
-#define RAM_FMAC_FW_ADDR            0x00120000
+#define RAM_FW_ADDR                 0x00100000
+#define RAM_FMAC_FW_ADDR            0x00110000
 #define FW_RAM_ADID_BASE_ADDR       0x00161928
-#define FW_RAM_ADID_BASE_ADDR_U03   0x00161928
-#define FW_RAM_PATCH_BASE_ADDR      0x00100000
+#define FW_RAM_PATCH_BASE_ADDR      0x0016ad64
+#define FW_PATCH_TEST_BASE_ADDR     0x00100000
+#define FW_WIFI_RAM_ADDR            0x00110000
 
 #define AICBT_PT_TAG                "AICBT_PT_TAG"
 
@@ -304,7 +290,6 @@ enum aicbt_patch_table_type {
 	AICBT_PT_BTMODE,
 	AICBT_PT_PWRON,
 	AICBT_PT_AF,
-	AICBT_PT_VER,
 };
 
 enum aicbt_btport_type {
@@ -345,13 +330,6 @@ enum aicbt_uart_flowctrl_type {
 enum aicbsp_cpmode_type {
 	AICBSP_CPMODE_WORK,
 	AICBSP_CPMODE_TEST,
-	AICBSP_CPMODE_MAX,
-};
-
-enum chip_rev {
-	CHIP_REV_U02 = 3,
-	CHIP_REV_U03 = 7,
-	CHIP_REV_U04 = 7,
 };
 
 #define AICBSP_HWINFO_DEFAULT       (-1)
@@ -385,6 +363,7 @@ struct aicbsp_firmware {
 	const char *bt_adid;
 	const char *bt_patch;
 	const char *bt_table;
+	const char *bt_patch_test;
 	const char *wl_fw;
 };
 
@@ -392,14 +371,10 @@ struct aicbsp_info_t {
 	int hwinfo;
 	int hwinfo_r;
 	uint32_t cpmode;
-	uint32_t chip_rev;
-	bool fwlog_en;
 };
 
 extern struct aicbsp_info_t aicbsp_info;
 extern struct mutex aicbsp_power_lock;
-extern const struct aicbsp_firmware *aicbsp_firmware_list;
-extern const struct aicbsp_firmware fw_u02[];
-extern const struct aicbsp_firmware fw_u03[];
+extern const struct aicbsp_firmware aicbsp_firmware_list[];
 
 #endif

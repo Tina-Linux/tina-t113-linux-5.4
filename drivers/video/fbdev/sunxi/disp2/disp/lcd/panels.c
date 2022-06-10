@@ -127,7 +127,6 @@ struct __lcd_panel *panel_array[] = {
 #ifdef CONFIG_LCD_SUPPORT_K101_IM2BYL02_L_800X1280
 	&K101_IM2BYL02_L_800X1280_mipi_panel,
 #endif
-	&super_lcd_panel,
 	NULL,
 };
 

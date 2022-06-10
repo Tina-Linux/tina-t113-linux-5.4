@@ -27,8 +27,7 @@
 
 #include "rawnand_debug.h"
 #include "../../nfd/nand_osal_for_linux.h"
-/*#include "../nand_boot.h"*/
-#include "../nand-partition3/sunxi_nand_boot.h"
+#include "../nand_boot.h"
 #include "../nand_errno.h"
 #include "../nand_nftl.h"
 #include "../nand_physic_interface.h"

@@ -169,13 +169,6 @@ config SND_SUNXI_SOC_DAUDIO_ASRC
 	Select Y or M to add support for the ASRC Func of the
 	I2S/PCM/TDM Module in the Allwinner SoCs.
 
-# SUNXI HDMIAUDIO Select
-config SND_SUNXI_SOC_SUNXI_HDMIAUDIO
-	tristate "Allwinner HDMI Audio Support"
-	depends on SND_SUNXI_SOC_DAUDIO
-    help
-	Select Y or M to add support for the HDMI Audio Module in the Allwinner
-	SoCs.
 
 # SUNXI SPDIF Select
 config SND_SUNXI_SOC_SPDIF

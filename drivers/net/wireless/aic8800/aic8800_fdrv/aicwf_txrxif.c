@@ -257,10 +257,6 @@ int aicwf_process_rxframes(struct aicwf_rx_priv *rx_priv)
 
 				if ((*(msg + 2) & 0x7f) == SDIO_TYPE_CFG_DATA_CFM)
 					aicwf_sdio_host_tx_cfm_handler(&(rx_priv->sdiodev->rwnx_hw->sdio_env), (u32 *)(msg + 4));
-
-				if ((*(msg + 2) & 0x7f) == SDIO_TYPE_CFG_PRINT)
-					rwnx_rx_handle_print(rx_priv->sdiodev->rwnx_hw, msg + 4, aggr_len);
-
 				skb_pull(skb, adjust_len+4);
 				kfree(msg);
 			}
@@ -434,8 +430,8 @@ void aicwf_rx_deinit(struct aicwf_rx_priv *rx_priv)
 	spin_unlock_bh(&rx_priv->stas_reord_lock);
 #endif
 
+	txrx_dbg("stio rx thread\n");
 #ifdef AICWF_SDIO_SUPPORT
-	txrx_dbg("sdio rx thread\n");
 	if (rx_priv->sdiodev->bus_if->busrx_thread) {
 		complete_all(&rx_priv->sdiodev->bus_if->busrx_trgg);
 		kthread_stop(rx_priv->sdiodev->bus_if->busrx_thread);

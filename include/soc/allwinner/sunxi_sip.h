@@ -24,13 +24,9 @@
 #define SET_WAKEUP_TIME_MS(ms)  ((3 << 30) | (ms))
 
 #ifdef CONFIG_ARM
-#ifdef CONFIG_ARCH_SUN50I
-#define ARM_SVC_BASE (0x80000000)
-#else
 #define ARM_SVC_BASE \
 	ARM_SMCCC_CALL_VAL(ARM_SMCCC_FAST_CALL, ARM_SMCCC_SMC_32, \
 			   ARM_SMCCC_OWNER_OEM, 0)
-#endif
 #endif
 
 #ifdef CONFIG_ARM64

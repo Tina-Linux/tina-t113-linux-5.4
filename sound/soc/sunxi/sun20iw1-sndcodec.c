@@ -688,8 +688,6 @@ static int sunxi_card_suspend(struct snd_soc_card *card)
 {
 	struct sunxi_card_priv *priv = snd_soc_card_get_drvdata(card);
 
-	if (priv->jack_func == JACK_DISABLE)
-		return 0;
 	disable_irq(priv->jackirq);
 
 	snd_soc_component_update_bits(priv->component, SUNXI_HMIC_CTRL,
@@ -709,8 +707,6 @@ static int sunxi_card_resume(struct snd_soc_card *card)
 {
 	struct sunxi_card_priv *priv = snd_soc_card_get_drvdata(card);
 
-	if (priv->jack_func == JACK_DISABLE)
-		return 0;
 	enable_irq(priv->jackirq);
 	priv->jack_irq_times = RESUME_IRQ;
 	priv->detect_state = PLUG_OUT;/*todo..?*/

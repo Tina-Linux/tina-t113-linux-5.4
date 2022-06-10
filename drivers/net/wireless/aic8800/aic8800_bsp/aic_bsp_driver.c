@@ -17,17 +17,6 @@
 #include "aicsdio.h"
 #include "aic_bsp_driver.h"
 
-static u8 binding_enc_data[16];
-static bool need_binding_verify;
-
-int wcn_bind_verify_calculate_verify_data(uint8_t *din, uint8_t *dout);
-#ifndef CONFIG_PLATFORM_ALLWINNER
-int wcn_bind_verify_calculate_verify_data(uint8_t *din, uint8_t *dout)
-{
-	return 0;
-}
-#endif
-
 static void cmd_dump(const struct rwnx_cmd *cmd)
 {
 	printk(KERN_CRIT "tkn[%d]  flags:%04x  result:%3d  cmd:%4d - reqcfm(%4d)\n",
@@ -423,21 +412,6 @@ int rwnx_send_dbg_mem_mask_write_req(struct aic_sdio_dev *sdiodev, u32 mem_addr,
 	return rwnx_send_msg(sdiodev, mem_mask_write_req, 1, DBG_MEM_MASK_WRITE_CFM, NULL);
 }
 
-int rwnx_send_dbg_binding_req(struct aic_sdio_dev *sdiodev, u8 *dout, u8 *binding_status)
-{
-	struct dbg_binding_req *binding_req;
-
-	/* Build the DBG_BINDING_REQ message */
-	binding_req = rwnx_msg_zalloc(DBG_BINDING_REQ, TASK_DBG, DRV_TASK_ID,
-									sizeof(struct dbg_binding_req));
-	if (!binding_req)
-		return -ENOMEM;
-
-	memcpy(binding_req->driver_data, dout, 16);
-
-	/* Send the DBG_MEM_MASK_WRITE_REQ message to LMAC FW */
-	return rwnx_send_msg(sdiodev, binding_req, 1, DBG_BINDING_CFM, binding_status);
-}
 
 int rwnx_send_dbg_start_app_req(struct aic_sdio_dev *sdiodev, u32 boot_addr, u32 boot_type, struct dbg_start_app_cfm *start_app_cfm)
 {
@@ -459,17 +433,7 @@ int rwnx_send_dbg_start_app_req(struct aic_sdio_dev *sdiodev, u32 boot_addr, u32
 	return rwnx_send_msg(sdiodev, start_app_req, 1, DBG_START_APP_CFM, start_app_cfm);
 }
 
-static inline int dbg_binding_ind(struct rwnx_cmd *cmd, struct ipc_e2a_msg *msg)
-{
-	struct dbg_binding_ind *ind = (struct dbg_binding_ind *)msg->param;
-	memcpy(binding_enc_data, ind->enc_data, 16);
-	need_binding_verify = true;
-
-	return 0;
-}
-
 static msg_cb_fct dbg_hdlrs[MSG_I(DBG_MAX)] = {
-	[MSG_I(DBG_BINDING_IND)] = (msg_cb_fct)dbg_binding_ind,
 };
 
 static msg_cb_fct *msg_hdlrs[] = {
@@ -705,13 +669,12 @@ err:
 
 int aicbt_patch_trap_data_load(struct aic_sdio_dev *sdiodev)
 {
-	uint32_t fw_ram_adid_base_addr = FW_RAM_ADID_BASE_ADDR;
-	if (aicbsp_info.chip_rev != CHIP_REV_U02)
-		fw_ram_adid_base_addr = FW_RAM_ADID_BASE_ADDR_U03;
-
-	if (rwnx_plat_bin_fw_upload_android(sdiodev, fw_ram_adid_base_addr, aicbsp_firmware_list[aicbsp_info.cpmode].bt_adid))
+	if (rwnx_plat_bin_fw_upload_android(sdiodev, FW_RAM_ADID_BASE_ADDR, aicbsp_firmware_list[aicbsp_info.cpmode].bt_adid))
 		return -1;
 	if (rwnx_plat_bin_fw_upload_android(sdiodev, FW_RAM_PATCH_BASE_ADDR, aicbsp_firmware_list[aicbsp_info.cpmode].bt_patch))
+		return -1;
+	if (aicbsp_firmware_list[aicbsp_info.cpmode].bt_patch_test &&
+		rwnx_plat_bin_fw_upload_android(sdiodev, FW_PATCH_TEST_BASE_ADDR, aicbsp_firmware_list[aicbsp_info.cpmode].bt_patch_test))
 		return -1;
 	return 0;
 }
@@ -741,12 +704,6 @@ int aicbt_patch_table_load(struct aic_sdio_dev *sdiodev)
 			*(data + 11) = aicbt_info.uart_baud;
 			*(data + 13) = aicbt_info.uart_flowctrl;
 		}
-
-		if (AICBT_PT_VER == p->type) {
-			printk("aicbsp: bt patch version: %s\n", (char *)p->data);
-			continue;
-		}
-
 		for (i = 0; i < p->len; i++) {
 			ret = rwnx_send_dbg_mem_write_req(sdiodev, *data, *(data + 1));
 			if (ret != 0)
@@ -837,8 +794,6 @@ static int aicwifi_patch_config(struct aic_sdio_dev *sdiodev)
 	struct dbg_mem_read_cfm rd_patch_addr_cfm;
 	int ret = 0;
 	u16 cnt = 0;
-	u32 patch_addr_reg = 0x1e4d80;
-	u32 patch_num_reg = 0x1e4d84;
 
 	ret = rwnx_send_dbg_mem_read_req(sdiodev, rd_patch_addr, &rd_patch_addr_cfm);
 	if (ret) {
@@ -848,15 +803,15 @@ static int aicwifi_patch_config(struct aic_sdio_dev *sdiodev)
 
 	config_base = rd_patch_addr_cfm.memdata;
 
-	ret = rwnx_send_dbg_mem_write_req(sdiodev, patch_addr_reg, patch_addr);
+	ret = rwnx_send_dbg_mem_write_req(sdiodev, 0x1e4d28, patch_addr);
 	if (ret) {
-		printk("0x%x write fail\n", patch_addr_reg);
+		printk("%x write fail\n", 0x1e4d28);
 		return ret;
 	}
 
-	ret = rwnx_send_dbg_mem_write_req(sdiodev, patch_num_reg, patch_num);
+	ret = rwnx_send_dbg_mem_write_req(sdiodev, 0x1e4d2c, patch_num);
 	if (ret) {
-		printk("0x%x write fail\n", patch_num_reg);
+		printk("%x write fail\n", 0x1e4d2c);
 		return ret;
 	}
 
@@ -879,8 +834,13 @@ static int aicwifi_patch_config(struct aic_sdio_dev *sdiodev)
 
 int aicwifi_init(struct aic_sdio_dev *sdiodev)
 {
-	if (rwnx_plat_bin_fw_upload_android(sdiodev, RAM_FMAC_FW_ADDR, aicbsp_firmware_list[aicbsp_info.cpmode].wl_fw)) {
+	if (rwnx_plat_bin_fw_upload_android(sdiodev, FW_WIFI_RAM_ADDR, aicbsp_firmware_list[aicbsp_info.cpmode].wl_fw)) {
 		printk("download wifi fw fail\n");
+		return -1;
+	}
+
+	if (rwnx_plat_bin_fw_upload_android(sdiodev, 0x1c7c00, "fmacfw_patch.bin")) {
+		printk("download wifi fw patch\n");
 		return -1;
 	}
 
@@ -896,6 +856,11 @@ int aicwifi_init(struct aic_sdio_dev *sdiodev)
 
 	if (aicwifi_start_from_bootrom(sdiodev)) {
 		printk("wifi start fail\n");
+		return -1;
+	}
+
+	if (aicwf_sdio_writeb(sdiodev, SDIOWIFI_WAKEUP_REG, 4)) {
+		sdio_err("reg:%d write failed!\n", SDIOWIFI_WAKEUP_REG);
 		return -1;
 	}
 
@@ -947,30 +912,6 @@ void aicbsp_platform_deinit(struct aic_sdio_dev *sdiodev)
 
 int aicbsp_driver_fw_init(struct aic_sdio_dev *sdiodev)
 {
-	const u32 mem_addr = 0x40500000;
-	struct dbg_mem_read_cfm rd_mem_addr_cfm;
-
-	uint8_t binding_status;
-	uint8_t dout[16];
-
-	need_binding_verify = false;
-
-	if (rwnx_send_dbg_mem_read_req(sdiodev, mem_addr, &rd_mem_addr_cfm))
-		return -1;
-
-	aicbsp_info.chip_rev = (u8)(rd_mem_addr_cfm.memdata >> 16);
-	if (aicbsp_info.chip_rev != CHIP_REV_U02 &&
-		aicbsp_info.chip_rev != CHIP_REV_U03 &&
-		aicbsp_info.chip_rev != CHIP_REV_U04) {
-		pr_err("aicbsp: %s, unsupport chip rev: %d\n", __func__, aicbsp_info.chip_rev);
-		return -1;
-	}
-
-	printk("aicbsp: %s, chip rev: %d\n", __func__, aicbsp_info.chip_rev);
-
-	if (aicbsp_info.chip_rev != CHIP_REV_U02)
-		aicbsp_firmware_list = fw_u03;
-
 	if (aicbsp_system_config(sdiodev))
 		return -1;
 
@@ -980,41 +921,6 @@ int aicbsp_driver_fw_init(struct aic_sdio_dev *sdiodev)
 	if (aicwifi_init(sdiodev))
 		return -1;
 
-	if (need_binding_verify) {
-		printk("aicbsp: crypto data %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-						binding_enc_data[0],  binding_enc_data[1],  binding_enc_data[2],  binding_enc_data[3],
-						binding_enc_data[4],  binding_enc_data[5],  binding_enc_data[6],  binding_enc_data[7],
-						binding_enc_data[8],  binding_enc_data[9],  binding_enc_data[10], binding_enc_data[11],
-						binding_enc_data[12], binding_enc_data[13], binding_enc_data[14], binding_enc_data[15]);
-
-		/* calculate verify data from crypto data */
-		if (wcn_bind_verify_calculate_verify_data(binding_enc_data, dout)) {
-			pr_err("aicbsp: %s, binding encrypt data incorrect\n", __func__);
-			return -1;
-		}
-
-		printk("aicbsp: verify data %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
-						dout[0],  dout[1],  dout[2],  dout[3],
-						dout[4],  dout[5],  dout[6],  dout[7],
-						dout[8],  dout[9],  dout[10], dout[11],
-						dout[12], dout[13], dout[14], dout[15]);
-
-		if (rwnx_send_dbg_binding_req(sdiodev, dout, &binding_status)) {
-			pr_err("aicbsp: %s, send binding request failn", __func__);
-			return -1;
-		}
-
-		if (binding_status) {
-			pr_err("aicbsp: %s, binding verify fail\n", __func__);
-			return -1;
-		}
-	}
-
-	if (aicwf_sdio_writeb(sdiodev, SDIOWIFI_WAKEUP_REG, 4)) {
-		sdio_err("reg:%d write failed!\n", SDIOWIFI_WAKEUP_REG);
-		return -1;
-	}
-
 	return 0;
 }
 
@@ -1023,7 +929,6 @@ int aicbsp_get_feature(struct aicbsp_feature_t *feature)
 	feature->sdio_clock = FEATURE_SDIO_CLOCK;
 	feature->sdio_phase = FEATURE_SDIO_PHASE;
 	feature->hwinfo     = aicbsp_info.hwinfo;
-	feature->fwlog_en   = aicbsp_info.fwlog_en;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(aicbsp_get_feature);

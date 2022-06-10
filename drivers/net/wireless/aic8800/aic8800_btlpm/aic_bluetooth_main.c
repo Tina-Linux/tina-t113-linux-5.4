@@ -39,30 +39,12 @@ static int __init aic_bluetooth_mod_init(void)
 	ret = platform_device_add(aicbt_pdev);
 	if (ret) {
 		pr_err("register platform device failed: %d\n", ret);
-		goto err0;
+		return ret;
 	}
 
-	ret = rfkill_bluetooth_init(aicbt_pdev);
-	if (ret) {
-		pr_err("rfkill init fail\n");
-		goto err1;
-	}
-
-	ret = bluesleep_init(aicbt_pdev);
-	if (ret) {
-		pr_err("bluesleep init fail\n");
-		goto err2;
-	}
-
+	rfkill_bluetooth_init(aicbt_pdev);
+	bluesleep_init(aicbt_pdev);
 	return 0;
-
-err2:
-	rfkill_bluetooth_remove(aicbt_pdev);
-err1:
-	platform_device_del(aicbt_pdev);
-err0:
-	platform_driver_unregister(&aicbt_driver);
-	return ret;
 }
 
 static void __exit aic_bluetooth_mod_exit(void)

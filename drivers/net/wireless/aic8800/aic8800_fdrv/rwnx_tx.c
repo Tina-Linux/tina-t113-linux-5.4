@@ -867,6 +867,9 @@ static int rwnx_amsdu_add_subframe_header(struct rwnx_hw *rwnx_hw,
 	list_add_tail(&amsdu_txhdr->list, &amsdu->hdrs);
 	amsdu->len += map_len;
 
+	rwnx_ipc_sta_buffer(rwnx_hw, sw_txhdr->txq->sta,
+						sw_txhdr->txq->tid, msdu_len);
+
 	trace_amsdu_subframe(sw_txhdr);
 	return 0;
 }
@@ -1341,7 +1344,6 @@ int rwnx_txdatacfm(void *pthis, void *host_id)
 	struct rwnx_sw_txhdr *sw_txhdr;
 	struct rwnx_hwq *hwq;
 	struct rwnx_txq *txq;
-	int headroom;
 	//int peek_off = offsetof(struct rwnx_hw_txhdr, cfm);
 	//int peek_len = sizeof(((struct rwnx_hw_txhdr *)0)->cfm);
 
@@ -1431,14 +1433,18 @@ int rwnx_txdatacfm(void *pthis, void *host_id)
 		struct rwnx_amsdu_txhdr *amsdu_txhdr;
 		list_for_each_entry(amsdu_txhdr, &sw_txhdr->amsdu.hdrs, list) {
 			rwnx_amsdu_del_subframe_header(amsdu_txhdr);
+			 rwnx_ipc_sta_buffer(rwnx_hw, txq->sta, txq->tid,
+								 -amsdu_txhdr->msdu_len);
 			consume_skb(amsdu_txhdr->skb);
 		}
 	}
 #endif /* CONFIG_RWNX_AMSDUS_TX */
 
-	headroom = sw_txhdr->headroom;
+	rwnx_ipc_sta_buffer(rwnx_hw, txq->sta, txq->tid,
+						-sw_txhdr->frame_len);
+
 	kmem_cache_free(rwnx_hw->sw_txhdr_cache, sw_txhdr);
-	skb_pull(skb, headroom);
+	skb_pull(skb, sw_txhdr->headroom);
 	consume_skb(skb);
 
 	return 0;

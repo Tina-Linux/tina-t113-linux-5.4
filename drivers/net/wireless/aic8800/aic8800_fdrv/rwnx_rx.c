@@ -369,14 +369,11 @@ static void rwnx_rx_data_skb_forward(struct rwnx_hw *rwnx_hw, struct rwnx_vif *r
 	rx_skb->dev = rwnx_vif->ndev;
 	skb_reset_mac_header(rx_skb);
 
-	/* Update statistics */
-	rwnx_vif->net_stats.rx_packets++;
-	rwnx_vif->net_stats.rx_bytes += rx_skb->len;
-
 	//printk("forward\n");
 
 	rx_skb->protocol = eth_type_trans(rx_skb, rwnx_vif->ndev);
 	memset(rx_skb->cb, 0, sizeof(rx_skb->cb));
+	REG_SW_SET_PROFILING(rwnx_hw, SW_PROF_IEEE80211RX);
 	#if 0 //modify by aic
 	netif_receive_skb(rx_skb);
 	#else
@@ -398,7 +395,11 @@ static void rwnx_rx_data_skb_forward(struct rwnx_hw *rwnx_hw, struct rwnx_vif *r
 	#endif
 	}
 	#endif
+	REG_SW_CLEAR_PROFILING(rwnx_hw, SW_PROF_IEEE80211RX);
 
+	/* Update statistics */
+	rwnx_vif->net_stats.rx_packets++;
+	rwnx_vif->net_stats.rx_bytes += rx_skb->len;
 	rwnx_hw->stats.last_rx = jiffies;
 }
 
@@ -504,16 +505,13 @@ static bool rwnx_rx_data_skb(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 
 		/* forward pkt to upper layer */
 		if (forward) {
-			/* Update statistics */
-			rwnx_vif->net_stats.rx_packets++;
-			rwnx_vif->net_stats.rx_bytes += rx_skb->len;
-
 			rx_skb->protocol = eth_type_trans(rx_skb, rwnx_vif->ndev);
 #ifdef AICWF_ARP_OFFLOAD
 			if (RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_STATION || RWNX_VIF_TYPE(rwnx_vif) == NL80211_IFTYPE_P2P_CLIENT)
 				arpoffload_proc(rx_skb, rwnx_vif);
 #endif
 			memset(rx_skb->cb, 0, sizeof(rx_skb->cb));
+			REG_SW_SET_PROFILING(rwnx_hw, SW_PROF_IEEE80211RX);
 			#if 0 //modify by aic
 			netif_receive_skb(rx_skb);
 			#else
@@ -535,7 +533,11 @@ static bool rwnx_rx_data_skb(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 			#endif
 			}
 			#endif
+			REG_SW_CLEAR_PROFILING(rwnx_hw, SW_PROF_IEEE80211RX);
 
+			/* Update statistics */
+			rwnx_vif->net_stats.rx_packets++;
+			rwnx_vif->net_stats.rx_bytes += rx_skb->len;
 			rwnx_hw->stats.last_rx = jiffies;
 		}
 	}
@@ -1075,6 +1077,400 @@ static int rwnx_rx_monitor(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 	return 0;
 }
 
+/**
+ * rwnx_unsup_rx_vec_ind() - IRQ handler callback for %IPC_IRQ_E2A_UNSUP_RX_VEC
+ *
+ * LMAC has triggered an IT saying that a rx vector of an unsupported frame has been
+ * captured and sent to upper layer. Then we need to fill the rx status, create a vendor
+ * specific header and fill it with the HT packet length. Finally, we need to specify at
+ * least 2 bytes of data and send the sk_buff to mac80211.
+ *
+ * @pthis: Pointer to main driver data
+ * @hostid: Pointer to IPC elem from e2aradars_pool
+ */
+u8 rwnx_unsup_rx_vec_ind(void *pthis, void *hostid)
+{
+	struct rwnx_hw *rwnx_hw = pthis;
+	struct rwnx_ipc_skb_elem *elem = hostid;
+	struct rx_vector_desc *rx_desc;
+	struct sk_buff *skb;
+	struct rx_vector_1 *rx_vect1;
+	struct phy_channel_info_desc *phy_info;
+	struct vendor_radiotap_hdr *rtap;
+	u16 ht_length;
+	struct rwnx_vif *rwnx_vif;
+	struct rx_vector_desc rx_vect_desc;
+	u8 rtap_len, vend_rtap_len = sizeof(*rtap);
+
+	dma_sync_single_for_cpu(rwnx_hw->dev, elem->dma_addr,
+							sizeof(struct rx_vector_desc), DMA_FROM_DEVICE);
+
+	skb = elem->skb;
+	if (((struct rx_vector_desc *) (skb->data))->pattern == 0) {
+		/*sync is needed even if the driver did not modify the memory*/
+		dma_sync_single_for_device(rwnx_hw->dev, elem->dma_addr,
+									 sizeof(struct rx_vector_desc), DMA_FROM_DEVICE);
+		return -1;
+	}
+
+	if (rwnx_hw->monitor_vif == RWNX_INVALID_VIF) {
+		/* Unmap will synchronize buffer for CPU */
+		dma_unmap_single(rwnx_hw->dev, elem->dma_addr, rwnx_hw->ipc_env->unsuprxvec_bufsz,
+						 DMA_FROM_DEVICE);
+		elem->skb = NULL;
+
+		/* Free skb */
+		dev_kfree_skb(skb);
+
+		/* Allocate and push a new buffer to fw to replace this one */
+		if (rwnx_ipc_unsup_rx_vec_elem_allocs(rwnx_hw, elem))
+			dev_err(rwnx_hw->dev, "Failed to alloc new unsupported rx vector buf\n");
+		return -1;
+	}
+
+	rwnx_vif = rwnx_hw->vif_table[rwnx_hw->monitor_vif];
+	skb->dev = rwnx_vif->ndev;
+	memcpy(&rx_vect_desc, skb->data, sizeof(rx_vect_desc));
+	rx_desc = &rx_vect_desc;
+
+	rx_vect1 = (struct rx_vector_1 *) (rx_desc->rx_vect1);
+	rwnx_rx_vector_convert(rwnx_hw, rx_vect1, NULL);
+	phy_info = (struct phy_channel_info_desc *) (&rx_desc->phy_info);
+	if (rx_vect1->format_mod >= FORMATMOD_VHT)
+		ht_length = 0;
+	else
+		ht_length = (u16) le32_to_cpu(rx_vect1->ht.length);
+
+	// Reserve space for radiotap
+	skb_reserve(skb, RADIOTAP_HDR_MAX_LEN);
+
+	/* Fill vendor specific header with fake values */
+	rtap = (struct vendor_radiotap_hdr *) skb->data;
+	rtap->oui[0] = 0x00;
+	rtap->oui[1] = 0x25;
+	rtap->oui[2] = 0x3A;
+	rtap->subns  = 0;
+	rtap->len = sizeof(ht_length);
+	put_unaligned_le16(ht_length, rtap->data);
+	vend_rtap_len += rtap->len;
+	skb_put(skb, vend_rtap_len);
+
+	/* Copy fake data */
+	put_unaligned_le16(0, skb->data + vend_rtap_len);
+	skb_put(skb, UNSUP_RX_VEC_DATA_LEN);
+
+	/* Get RadioTap Header length */
+	rtap_len = rwnx_rx_rtap_hdrlen(rx_vect1, true);
+
+	/* Check headroom space */
+	if (skb_headroom(skb) < rtap_len) {
+		netdev_err(rwnx_vif->ndev, "not enough headroom %d need %d\n", skb_headroom(skb), rtap_len);
+		return -1;
+	}
+
+	/* Add RadioTap Header */
+	rwnx_rx_add_rtap_hdr(rwnx_hw, skb, rx_vect1, phy_info, NULL,
+						 rtap_len, vend_rtap_len, BIT(0));
+
+	skb_reset_mac_header(skb);
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+	skb->pkt_type = PACKET_OTHERHOST;
+	skb->protocol = htons(ETH_P_802_2);
+
+	/* Unmap will synchronize buffer for CPU */
+	dma_unmap_single(rwnx_hw->dev, elem->dma_addr, rwnx_hw->ipc_env->unsuprxvec_bufsz,
+					 DMA_FROM_DEVICE);
+	elem->skb = NULL;
+
+	netif_receive_skb(skb);
+
+	/* Allocate and push a new buffer to fw to replace this one */
+	if (rwnx_ipc_unsup_rx_vec_elem_allocs(rwnx_hw, elem))
+		netdev_err(rwnx_vif->ndev, "Failed to alloc new unsupported rx vector buf\n");
+	return 0;
+}
+
+/**
+ * rwnx_rxdataind - Process rx buffer
+ *
+ * @pthis: Pointer to the object attached to the IPC structure
+ *         (points to struct rwnx_hw is this case)
+ * @hostid: Address of the RX descriptor
+ *
+ * This function is called for each buffer received by the fw
+ *
+ */
+u8 rwnx_rxdataind(void *pthis, void *hostid)
+{
+	struct rwnx_hw *rwnx_hw = pthis;
+	struct rwnx_ipc_elem *elem = hostid;
+	struct hw_rxhdr *hw_rxhdr;
+	struct rxdesc_tag *rxdesc;
+	struct rwnx_vif *rwnx_vif;
+	struct sk_buff *skb = NULL;
+	int rx_buff_idx;
+	int msdu_offset = sizeof(struct hw_rxhdr) + 2;
+	int peek_len    = msdu_offset + sizeof(struct ethhdr);
+	u16_l status;
+
+	REG_SW_SET_PROFILING(rwnx_hw, SW_PROF_RWNXDATAIND);
+
+	/* Get the ownership of the descriptor */
+	dma_sync_single_for_cpu(rwnx_hw->dev, elem->dma_addr,
+							sizeof(struct rxdesc_tag), DMA_FROM_DEVICE);
+
+	rxdesc = elem->addr;
+	status = rxdesc->status;
+
+	/* check that frame is completely uploaded */
+	if (!status) {
+		/* Get the ownership of the descriptor */
+		dma_sync_single_for_device(rwnx_hw->dev, elem->dma_addr,
+								   sizeof(struct rxdesc_tag), DMA_FROM_DEVICE);
+		return -1;
+	}
+
+	/* Get the buffer linked with the received descriptor */
+	rx_buff_idx = RWNX_RXBUFF_HOSTID_TO_IDX(rxdesc->host_id);
+	if (RWNX_RXBUFF_VALID_IDX(rx_buff_idx))
+		skb = rwnx_hw->rxbuf_elems.skb[rx_buff_idx];
+
+	if (!skb) {
+		dev_err(rwnx_hw->dev, "RX Buff invalid idx [%d]\n", rx_buff_idx);
+		return -1;
+	}
+
+	/* Check the pattern */
+	if (RWNX_RXBUFF_PATTERN_GET(skb) != rwnx_rxbuff_pattern) {
+		dev_err(rwnx_hw->dev, "RX Buff Pattern not correct\n");
+		BUG();
+	}
+
+	/* Check if we need to delete the buffer */
+	if (status & RX_STAT_DELETE) {
+		/* Remove the SK buffer from the rxbuf_elems table */
+		rwnx_ipc_rxbuf_elem_pull(rwnx_hw, skb);
+		/* Free the buffer */
+		dev_kfree_skb(skb);
+		goto end;
+	}
+
+	/* Check if we need to forward the buffer coming from a monitor interface */
+	if (status & RX_STAT_MONITOR) {
+		struct sk_buff *skb_monitor;
+		struct hw_rxhdr hw_rxhdr_copy;
+		u8 rtap_len;
+		u16 frm_len;
+
+		//Check if monitor interface exists and is open
+		rwnx_vif = rwnx_rx_get_vif(rwnx_hw, rwnx_hw->monitor_vif);
+		if (!rwnx_vif) {
+			dev_err(rwnx_hw->dev, "Received monitor frame but there is no monitor interface open\n");
+			goto check_len_update;
+		}
+
+		hw_rxhdr = (struct hw_rxhdr *)skb->data;
+		rwnx_rx_vector_convert(rwnx_hw,
+							   &hw_rxhdr->hwvect.rx_vect1,
+							   &hw_rxhdr->hwvect.rx_vect2);
+		rtap_len = rwnx_rx_rtap_hdrlen(&hw_rxhdr->hwvect.rx_vect1, false);
+
+		// Move skb->data pointer to MAC Header or Ethernet header
+		skb->data += msdu_offset;
+
+		//Save frame length
+		frm_len = le32_to_cpu(hw_rxhdr->hwvect.len);
+
+		// Reserve space for frame
+		skb->len = frm_len;
+
+		if (status == RX_STAT_MONITOR) {
+			/* Remove the SK buffer from the rxbuf_elems table. It will also
+			   unmap the buffer and then sync the buffer for the cpu */
+			rwnx_ipc_rxbuf_elem_pull(rwnx_hw, skb);
+
+			//Check if there is enough space to add the radiotap header
+			if (skb_headroom(skb) > rtap_len) {
+
+				skb_monitor = skb;
+
+				//Duplicate the HW Rx Header to override with the radiotap header
+				memcpy(&hw_rxhdr_copy, hw_rxhdr, sizeof(hw_rxhdr_copy));
+
+				hw_rxhdr = &hw_rxhdr_copy;
+			} else {
+				//Duplicate the skb and extend the headroom
+				skb_monitor = skb_copy_expand(skb, rtap_len, 0, GFP_ATOMIC);
+
+				//Reset original skb->data pointer
+				skb->data = (void *)hw_rxhdr;
+			}
+		} else {
+		//#ifdef CONFIG_RWNX_MON_DATA
+		#if 0
+			// Check if MSDU
+			if (!hw_rxhdr->flags_is_80211_mpdu) {
+				// MSDU
+				//Extract MAC header
+				u16 machdr_len = hw_rxhdr->mac_hdr_backup.buf_len;
+				u8 *machdr_ptr = hw_rxhdr->mac_hdr_backup.buffer;
+
+				//Pull Ethernet header from skb
+				skb_pull(skb, sizeof(struct ethhdr));
+
+				// Copy skb and extend for adding the radiotap header and the MAC header
+				skb_monitor = skb_copy_expand(skb,
+											  rtap_len + machdr_len,
+											  0, GFP_ATOMIC);
+
+				//Reserve space for the MAC Header
+				skb_push(skb_monitor, machdr_len);
+
+				//Copy MAC Header
+				memcpy(skb_monitor->data, machdr_ptr, machdr_len);
+
+				//Update frame length
+				frm_len += machdr_len - sizeof(struct ethhdr);
+			} else {
+				// MPDU
+				skb_monitor = skb_copy_expand(skb, rtap_len, 0, GFP_ATOMIC);
+			}
+
+			//Reset original skb->data pointer
+			skb->data = (void *)hw_rxhdr;
+		#else
+			//Reset original skb->data pointer
+			skb->data = (void *)hw_rxhdr;
+
+			wiphy_err(rwnx_hw->wiphy, "RX status %d is invalid when MON_DATA is disabled\n", status);
+			goto check_len_update;
+		#endif
+		}
+
+		skb_reset_tail_pointer(skb);
+		skb->len = 0;
+		skb_reset_tail_pointer(skb_monitor);
+		skb_monitor->len = 0;
+
+		skb_put(skb_monitor, frm_len);
+		if (rwnx_rx_monitor(rwnx_hw, rwnx_vif, skb_monitor, hw_rxhdr, rtap_len))
+			dev_kfree_skb(skb_monitor);
+
+		if (status == RX_STAT_MONITOR) {
+			status |= RX_STAT_ALLOC;
+			if (skb_monitor != skb) {
+				dev_kfree_skb(skb);
+			}
+		}
+	}
+
+check_len_update:
+	/* Check if we need to update the length */
+	if (status & RX_STAT_LEN_UPDATE) {
+		dma_addr_t dma_addr = RWNX_RXBUFF_DMA_ADDR_GET(skb);
+		dma_sync_single_for_cpu(rwnx_hw->dev, dma_addr,
+								peek_len, DMA_FROM_DEVICE);
+
+		hw_rxhdr = (struct hw_rxhdr *)skb->data;
+
+		hw_rxhdr->hwvect.len = rxdesc->frame_len;
+
+		if (status & RX_STAT_ETH_LEN_UPDATE) {
+			/* Update Length Field inside the Ethernet Header */
+			struct ethhdr *hdr = (struct ethhdr *)((u8 *)hw_rxhdr + msdu_offset);
+
+			hdr->h_proto = htons(rxdesc->frame_len - sizeof(struct ethhdr));
+		}
+
+		dma_sync_single_for_device(rwnx_hw->dev, dma_addr,
+								   peek_len, DMA_BIDIRECTIONAL);
+		goto end;
+	}
+
+	/* Check if it must be discarded after informing upper layer */
+	if (status & RX_STAT_SPURIOUS) {
+		struct ieee80211_hdr *hdr;
+
+		/* Read mac header to obtain Transmitter Address */
+		rwnx_ipc_rxbuf_elem_sync(rwnx_hw, skb, msdu_offset + sizeof(*hdr));
+
+		hw_rxhdr = (struct hw_rxhdr *)skb->data;
+		hdr = (struct ieee80211_hdr *)(skb->data + msdu_offset);
+		rwnx_vif = rwnx_rx_get_vif(rwnx_hw, hw_rxhdr->flags_vif_idx);
+		if (rwnx_vif) {
+			rwnx_cfg80211_rx_spurious_frame(rwnx_vif->ndev, hdr->addr2, GFP_ATOMIC);
+		}
+		rwnx_ipc_rxbuf_elem_repush(rwnx_hw, skb);
+		goto end;
+	}
+
+	/* Check if we need to forward the buffer */
+	if (status & RX_STAT_FORWARD) {
+
+		/* Remove the SK buffer from the rxbuf_elems table. It will also
+		   unmap the buffer and then sync the buffer for the cpu */
+		rwnx_ipc_rxbuf_elem_pull(rwnx_hw, skb);
+		hw_rxhdr = (struct hw_rxhdr *)skb->data;
+		rwnx_rx_vector_convert(rwnx_hw,
+							   &hw_rxhdr->hwvect.rx_vect1,
+							   &hw_rxhdr->hwvect.rx_vect2);
+		skb_reserve(skb, msdu_offset);
+		skb_put(skb, le32_to_cpu(hw_rxhdr->hwvect.len));
+
+		if (hw_rxhdr->flags_is_80211_mpdu) {
+			rwnx_rx_mgmt_any(rwnx_hw, skb, hw_rxhdr);
+		} else {
+			rwnx_vif = rwnx_rx_get_vif(rwnx_hw, hw_rxhdr->flags_vif_idx);
+
+			if (!rwnx_vif) {
+				dev_err(rwnx_hw->dev, "Frame received but no active vif (%d)",
+						hw_rxhdr->flags_vif_idx);
+				dev_kfree_skb(skb);
+				goto check_alloc;
+			}
+
+			if (hw_rxhdr->flags_sta_idx != RWNX_INVALID_STA) {
+				struct rwnx_sta *sta;
+
+				sta = &rwnx_hw->sta_table[hw_rxhdr->flags_sta_idx];
+				rwnx_rx_statistic(rwnx_hw, hw_rxhdr, sta);
+
+				if (sta->vlan_idx != rwnx_vif->vif_index) {
+					rwnx_vif = rwnx_hw->vif_table[sta->vlan_idx];
+					if (!rwnx_vif) {
+						dev_kfree_skb(skb);
+						goto check_alloc;
+					}
+				}
+
+				if (hw_rxhdr->flags_is_4addr && !rwnx_vif->use_4addr) {
+					rwnx_cfg80211_rx_unexpected_4addr_frame(rwnx_vif->ndev,
+													   sta->mac_addr, GFP_ATOMIC);
+				}
+			}
+
+			skb->priority = 256 + hw_rxhdr->flags_user_prio;
+			if (!rwnx_rx_data_skb(rwnx_hw, rwnx_vif, skb, hw_rxhdr))
+				dev_kfree_skb(skb);
+		}
+	}
+
+check_alloc:
+	/* Check if we need to allocate a new buffer */
+	if ((status & RX_STAT_ALLOC) &&
+		rwnx_ipc_rxbuf_elem_allocs(rwnx_hw)) {
+		dev_err(rwnx_hw->dev, "Failed to alloc new RX buf\n");
+	}
+
+end:
+	REG_SW_CLEAR_PROFILING(rwnx_hw, SW_PROF_RWNXDATAIND);
+
+	/* Reset and repush descriptor to FW */
+	rwnx_ipc_rxdesc_elem_repush(rwnx_hw, elem);
+
+	return 0;
+}
+
 #ifdef AICWF_ARP_OFFLOAD
 void arpoffload_proc(struct sk_buff *skb, struct rwnx_vif *rwnx_vif)
 {
@@ -1097,11 +1493,8 @@ void arpoffload_proc(struct sk_buff *skb, struct rwnx_vif *rwnx_vif)
 						if (option[offset] == DHCP_OPTION_MESSAGE_TYPE) {
 							if (option[offset+2] == DHCP_ACK) {
 								dhcped = 1;
-								printk("paired=%x, should=%x\n", rwnx_vif->sta.paired_cipher_type, WLAN_CIPHER_SUITE_CCMP);
-								if (rwnx_vif->sta.paired_cipher_type == WLAN_CIPHER_SUITE_CCMP || \
-									rwnx_vif->sta.paired_cipher_type == WLAN_CIPHER_SUITE_AES_CMAC || \
-									((rwnx_vif->sta.group_cipher_type == 0xff) && \
-									 (rwnx_vif->sta.paired_cipher_type == 0xff)))
+								printk("group=%x, should=%x\n", rwnx_vif->sta.group_cipher_type, WLAN_CIPHER_SUITE_CCMP);
+								if (rwnx_vif->sta.group_cipher_type == WLAN_CIPHER_SUITE_CCMP || rwnx_vif->sta.group_cipher_type == WLAN_CIPHER_SUITE_AES_CMAC)
 									rwnx_send_arpoffload_en_req(rwnx_vif->rwnx_hw, rwnx_vif, dhcph->yiaddr, 1);
 								else
 									rwnx_send_arpoffload_en_req(rwnx_vif->rwnx_hw, rwnx_vif, dhcph->yiaddr, 0);
@@ -1266,6 +1659,7 @@ void reord_deinit_sta(struct aicwf_rx_priv *rx_priv, struct reord_ctrl_info *reo
 			req->pkt = NULL;
 			reord_rxframe_free(&rx_priv->freeq_lock, &rx_priv->rxframes_freequeue, &req->rxframe_list);
 		}
+		printk("reord dinit");
 		spin_unlock_irqrestore(&preorder_ctrl->reord_list_lock, flags);
 		if (timer_pending(&preorder_ctrl->reord_timer)) {
 			ret = del_timer_sync(&preorder_ctrl->reord_timer);
@@ -1292,9 +1686,6 @@ int reord_single_frame_ind(struct aicwf_rx_priv *rx_priv, struct recv_msdu *prfr
 	skb->data = prframe->rx_data;
 	skb_set_tail_pointer(skb, prframe->len);
 	skb->len = prframe->len;
-
-	rwnx_vif->net_stats.rx_packets++;
-	rwnx_vif->net_stats.rx_bytes += skb->len;
 	//printk("netif sn=%d, len=%d\n", precv_frame->attrib.seq_num, skb->len);
 
 	skb->dev = rwnx_vif->ndev;
@@ -1309,21 +1700,23 @@ int reord_single_frame_ind(struct aicwf_rx_priv *rx_priv, struct recv_msdu *prfr
 	if (in_interrupt()) {
 		netif_rx(skb);
 	} else {
-		/*
-		 * If the receive is not processed inside an ISR, the softirqd must be woken explicitly to service the NET_RX_SOFTIRQ.
-		 * * In 2.6 kernels, this is handledby netif_rx_ni(), but in earlier kernels, we need to do it manually.
-		 */
+	/*
+	* If the receive is not processed inside an ISR, the softirqd must be woken explicitly to service the NET_RX_SOFTIRQ.
+	* * In 2.6 kernels, this is handledby netif_rx_ni(), but in earlier kernels, we need to do it manually.
+	*/
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0)
-		netif_rx_ni(skb);
+	netif_rx_ni(skb);
 #else
-		ulong flags;
-		netif_rx(skb);
-		local_irq_save(flags);
-		RAISE_RX_SOFTIRQ();
-		local_irq_restore(flags);
+	ulong flags;
+	netif_rx(skb);
+	local_irq_save(flags);
+	RAISE_RX_SOFTIRQ();
+	local_irq_restore(flags);
 #endif
 	}
 
+	rwnx_vif->net_stats.rx_packets++;
+	rwnx_vif->net_stats.rx_bytes += skb->len;
 	prframe->pkt = NULL;
 	reord_rxframe_free(&rx_priv->freeq_lock, rxframes_freequeue, &prframe->rxframe_list);
 
@@ -1607,25 +2000,6 @@ void remove_sec_hdr_mgmt_frame(struct hw_rxhdr *hw_rxhdr, struct sk_buff *skb)
 	}
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
-void defrag_timeout_cb(ulong data)
-#else
-void defrag_timeout_cb(struct timer_list *t)
-#endif
-{
-	struct defrag_ctrl_info *defrag_ctrl = NULL;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
-	defrag_ctrl = (struct defrag_ctrl_info *)data;
-#else
-	defrag_ctrl = from_timer(defrag_ctrl, t, defrag_timer);
-#endif
-
-	printk("%s:%p\r\n", __func__, defrag_ctrl);
-	list_del_init(&defrag_ctrl->list);
-	dev_kfree_skb(defrag_ctrl->skb);
-	kfree(defrag_ctrl);
-}
-
 u8 rwnx_rxdataind_aicwf(struct rwnx_hw *rwnx_hw, void *hostid, void *rx_priv)
 {
 	struct hw_rxhdr *hw_rxhdr;
@@ -1641,22 +2015,12 @@ u8 rwnx_rxdataind_aicwf(struct rwnx_hw *rwnx_hw, void *hostid, void *rx_priv)
 	u8 ether_type[2] = {0};
 	u8 pull_len = 0;
 	u16 seq_num = 0;
-	u8_l frag_num = 0;
 	u8 tid = 0;
 	u8 is_qos = 0;
-	u8 is_frag = 0;
-	struct defrag_ctrl_info *defrag_info = NULL;
-	struct defrag_ctrl_info *defrag_info_tmp = NULL;
-	int ret;
-	u8 sta_idx = 0;
-	u16_l frame_ctrl;
-	u8 is_amsdu = 0;
-	u16 len_alligned = 0;
-	u16 sublen = 0;
-	struct sk_buff *sub_skb = NULL;
 	bool resend = false, forward = true;
 	const struct ethhdr *eth;
 
+	REG_SW_SET_PROFILING(rwnx_hw, SW_PROF_RWNXDATAIND);
 	hw_rxhdr = (struct hw_rxhdr *)skb->data;
 
 	if (hw_rxhdr->is_monitor_vif) {
@@ -1822,19 +2186,11 @@ check_len_update:
 							   &hw_rxhdr->hwvect.rx_vect2);
 		skb_pull(skb, msdu_offset + 2); //+2 since sdio allign 58->60
 
-#define MAC_FCTRL_MOREFRAG 0x0400
-		frame_ctrl = (skb->data[1] << 8) | skb->data[0];
-		seq_num = ((skb->data[22] & 0xf0) >> 4) | (skb->data[23] << 4);
-		frag_num = (skb->data[22] & 0x0f);
-		is_amsdu = 0;
-
 		if ((skb->data[0] & 0x0f) == 0x08) {
 			if ((skb->data[0] & 0x80) == 0x80) {//qos data
 				hdr_len = 26;
 				tid = skb->data[24] & 0x0F;
 				is_qos = 1;
-				if (skb->data[24] & 0x80)
-					is_amsdu = 1;
 			}
 
 			if ((skb->data[1] & 0x3) == 0x1)  {// to ds
@@ -1846,7 +2202,9 @@ check_len_update:
 			}
 
 			pull_len += (hdr_len + 8);
-
+#ifdef AICWF_RX_REORDER
+			seq_num = ((skb->data[22]&0xf0)>>4) | (skb->data[23]<<4);
+#endif
 			switch (hw_rxhdr->hwvect.decr_status) {
 			case RWNX_RX_HD_DECR_CCMP128:
 				pull_len += 8;//ccmp_header
@@ -1867,184 +2225,11 @@ check_len_update:
 				break;
 			}
 
-			if (is_amsdu) {
-				skb_pull(skb, pull_len-8);
-				/* |amsdu sub1 | amsdu sub2 | ... */
-				len_alligned = 0;
-				sublen = 0;
-				sub_skb = NULL;
-				//printk("is_len:%d, pull:%d\n", skb->len, pull_len);
-				while (skb->len > 16) {
-					sublen = (skb->data[12]<<8)|(skb->data[13]);
-					if (skb->len > (sublen+14))
-						len_alligned = roundup(sublen + 14, 4);
-					else if (skb->len == (sublen+14))
-						len_alligned = sublen+14;
-					else {
-						printk("accroding to amsdu: this will not happen\n");
-						break;
-					}
-					//printk("sublen = %d, %x, %x, %x, %x\r\n", sublen,skb->data[0], skb->data[1], skb->data[12], skb->data[13]);
-#if 1
-					sub_skb = __dev_alloc_skb(sublen - 6 + 12, GFP_KERNEL);
-					skb_put(sub_skb, sublen - 6 + 12);
-					memcpy(sub_skb->data, skb->data, MAC_ADDR_LEN);
-					memcpy(&sub_skb->data[6], &skb->data[6], MAC_ADDR_LEN);
-					memcpy(&sub_skb->data[12], &skb->data[14 + 6], sublen - 6);
-
-					rwnx_vif = rwnx_rx_get_vif(rwnx_hw, hw_rxhdr->flags_vif_idx);
-					if (!rwnx_vif) {
-						printk("Frame received but no active vif (%d)", hw_rxhdr->flags_vif_idx);
-						dev_kfree_skb(sub_skb);
-						break;
-					}
-
-					if (!rwnx_rx_data_skb(rwnx_hw, rwnx_vif, sub_skb, hw_rxhdr))
-						dev_kfree_skb(sub_skb);
-#endif
-					skb_pull(skb, len_alligned);
-				}
-				dev_kfree_skb(skb);
-				return 0;
-			}
-
-			if (hw_rxhdr->flags_dst_idx != RWNX_INVALID_STA)
-				sta_idx = hw_rxhdr->flags_dst_idx;
-
-			if (!hw_rxhdr->flags_need_reord && ((frame_ctrl & MAC_FCTRL_MOREFRAG) || frag_num)) {
-				printk("rxfrag:%d,%d\r\n", (frame_ctrl & MAC_FCTRL_MOREFRAG), frag_num);
-				if (frame_ctrl & MAC_FCTRL_MOREFRAG) {
-					spin_lock_bh(&rwnx_hw->defrag_lock);
-					if (!list_empty(&rwnx_hw->defrag_list)) {
-						list_for_each_entry(defrag_info_tmp, &rwnx_hw->defrag_list, list) {
-							if ((defrag_info_tmp->sn == seq_num) && (defrag_info_tmp->tid == tid) && \
-									defrag_info_tmp->sta_idx == sta_idx) {
-								defrag_info = defrag_info_tmp;
-								break;
-							}
-						}
-					}
-					spin_unlock_bh(&rwnx_hw->defrag_lock);
-					//printk("rx frag: sn=%d, fn=%d\r\n", seq_num, frag_num);
-					if (defrag_info) {
-						is_frag = 1;
-						if (defrag_info->next_fn != frag_num) {
-							//printk("discard:%d:%d\n", defrag_info->next_fn, frag_num);
-							dev_kfree_skb(skb);
-							return 0;
-						}
-
-						skb_put(defrag_info->skb, skb->len-(pull_len-8));
-						memcpy(&defrag_info->skb->data[defrag_info->frm_len], \
-								&skb->data[pull_len-8], skb->len - (pull_len-8));
-						//printk("middle:%d,%d\n", skb->len-(pull_len-8), skb->len);
-						defrag_info->frm_len += (skb->len - (pull_len - 8));
-						defrag_info->next_fn++;
-						dev_kfree_skb(skb);
-						return 0;
-					} else {
-						defrag_info = kzalloc(sizeof(struct defrag_ctrl_info), GFP_ATOMIC);
-						if (defrag_info == NULL) {
-							printk("no defrag_ctrl_info\r\n");
-							dev_kfree_skb(skb);
-							return 0;
-						}
-						defrag_info->skb = __dev_alloc_skb(2000, GFP_ATOMIC);
-						if (defrag_info->skb == NULL) {
-							printk("no fragment skb\r\n");
-							dev_kfree_skb(skb);
-							kfree(defrag_info);
-							return 0;
-						}
-						is_frag = 1;
-						skb_pull(skb, pull_len);
-						skb_push(skb, 14);
-						memcpy(skb->data, ra, MAC_ADDR_LEN);
-						memcpy(&skb->data[6], ta, MAC_ADDR_LEN);
-						memcpy(&skb->data[12], ether_type, 2);
-
-						defrag_info->sn = seq_num;
-						defrag_info->next_fn = 1;
-						defrag_info->tid = tid;
-						defrag_info->sta_idx = sta_idx;
-
-						skb_put(defrag_info->skb, skb->len);
-						memcpy(defrag_info->skb->data, skb->data, skb->len);
-						defrag_info->frm_len = skb->len;
-						//printk("first:%p,%d\r\n", defrag_info, defrag_info->frm_len);
-						spin_lock_bh(&rwnx_hw->defrag_lock);
-						list_add_tail(&defrag_info->list, &rwnx_hw->defrag_list);
-						spin_unlock_bh(&rwnx_hw->defrag_lock);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 15, 0)
-						init_timer(&defrag_info->defrag_timer);
-						defrag_info->defrag_timer.data = (unsigned long)defrag_info;
-						defrag_info->defrag_timer.function = defrag_timeout_cb;
-#else
-						timer_setup(&defrag_info->defrag_timer, defrag_timeout_cb, 0);
-#endif
-						ret = mod_timer(&defrag_info->defrag_timer, jiffies + msecs_to_jiffies(DEFRAG_MAX_WAIT));
-						dev_kfree_skb(skb);
-						return 0;
-					}
-				} else {
-					//check whether the last fragment
-					if (!list_empty(&rwnx_hw->defrag_list)) {
-						spin_lock_bh(&rwnx_hw->defrag_lock);
-						list_for_each_entry(defrag_info_tmp, &rwnx_hw->defrag_list, list) {
-							if (((defrag_info_tmp->sn == seq_num) && (defrag_info_tmp->tid == tid) && \
-										defrag_info_tmp->sta_idx == sta_idx)) {
-								defrag_info = defrag_info_tmp;
-								break;
-							}
-						}
-						spin_unlock_bh(&rwnx_hw->defrag_lock);
-
-						if (defrag_info) {
-							if (defrag_info->next_fn != frag_num) {
-								printk("discard:%d:%d\n", defrag_info->next_fn, frag_num);
-								dev_kfree_skb(skb);
-								return 0;
-							}
-
-							skb_put(defrag_info->skb, skb->len - (pull_len-8));
-							memcpy(&defrag_info->skb->data[defrag_info->frm_len], \
-										&skb->data[pull_len-8], skb->len - (pull_len-8));
-							defrag_info->frm_len += (skb->len - (pull_len-8));
-							is_frag = 1;
-							//printk("last: sn=%d, fn=%d, %d, %d\r\n", seq_num, frag_num, defrag_info->frm_len, skb->len);
-							dev_kfree_skb(skb);
-
-							rwnx_vif = rwnx_rx_get_vif(rwnx_hw, hw_rxhdr->flags_vif_idx);
-							if (!rwnx_vif) {
-								printk("Frame received but no active vif (%d)", hw_rxhdr->flags_vif_idx);
-								dev_kfree_skb(skb);
-								return 0;
-							}
-
-							if (!rwnx_rx_data_skb(rwnx_hw, rwnx_vif, defrag_info->skb, hw_rxhdr))
-								dev_kfree_skb(defrag_info->skb);
-
-							spin_lock_bh(&rwnx_hw->defrag_lock);
-							list_del_init(&defrag_info->list);
-							spin_unlock_bh(&rwnx_hw->defrag_lock);
-							if (timer_pending(&defrag_info->defrag_timer)) {
-								ret = del_timer(&defrag_info->defrag_timer);
-							}
-							kfree(defrag_info);
-
-							return 0;
-						}
-					}
-				}
-			}
-
-			if (!is_frag) {
-				skb_pull(skb, pull_len);
-				skb_push(skb, 14);
-				memcpy(skb->data, ra, MAC_ADDR_LEN);
-				memcpy(&skb->data[6], ta, MAC_ADDR_LEN);
-				memcpy(&skb->data[12], ether_type, 2);
-			}
+			skb_pull(skb, pull_len);
+			skb_push(skb, 14);
+			memcpy(skb->data, ra, MAC_ADDR_LEN);
+			memcpy(&skb->data[6], ta, MAC_ADDR_LEN);
+			memcpy(&skb->data[12], ether_type, 2);
 		}
 
 		if (hw_rxhdr->flags_is_80211_mpdu) {
@@ -2145,6 +2330,7 @@ check_len_update:
 	}
 
 end:
+	REG_SW_CLEAR_PROFILING(rwnx_hw, SW_PROF_RWNXDATAIND);
 	return 0;
 }
 

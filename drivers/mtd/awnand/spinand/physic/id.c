@@ -153,8 +153,7 @@ struct aw_spinand_phy_info micron[] = {
 		.BlkCntPerDie	= 2048,
 		.OobSizePerPage = 64,
 		.OperationOpt	= SPINAND_QUAD_READ | SPINAND_QUAD_PROGRAM |
-			SPINAND_DUAL_READ | SPINAND_QUAD_NO_NEED_ENABLE |
-			SPINAND_TWO_PLANE_SELECT,
+			SPINAND_DUAL_READ | SPINAND_QUAD_NO_NEED_ENABLE,
 		.MaxEraseTimes  = 65000,
 		.EccType	= BIT3_LIMIT5_ERR2,
 		.EccProtectedType = SIZE16_OFF32_LEN16,

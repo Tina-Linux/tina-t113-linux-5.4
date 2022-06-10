@@ -15,7 +15,6 @@ struct aicbsp_feature_t {
 	int      hwinfo;
 	uint32_t sdio_clock;
 	uint8_t  sdio_phase;
-	bool     fwlog_en;
 };
 
 int aicbsp_set_subsys(int, int);

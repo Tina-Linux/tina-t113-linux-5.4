@@ -131,13 +131,6 @@ int disp_al_lcd_enable_irq(u32 screen_id, enum __lcd_irq_id_t irq_id,
 int disp_al_lcd_disable_irq(u32 screen_id, enum __lcd_irq_id_t irq_id,
 			    struct disp_panel_para *panel);
 
-int disp_al_hdmi_enable(u32 screen_id);
-int disp_al_hdmi_disable(u32 screen_id);
-int disp_al_hdmi_cfg(u32 screen_id, struct disp_video_timings *video_info);
-int disp_al_hdmi_irq_enable(u32 screen_id);
-int disp_al_hdmi_irq_disable(u32 screen_id);
-int disp_al_hdmi_pad_sel(u32 screen_id, u32 pad);
-
 int disp_al_tv_enable(u32 screen_id);
 int disp_al_tv_disable(u32 screen_id);
 int disp_al_tv_cfg(u32 screen_id, struct disp_video_timings *video_info);

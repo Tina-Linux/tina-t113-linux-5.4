@@ -26,6 +26,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/pinctrl/machine.h>
 #include <linux/pinctrl/pinctrl.h>
+#include <linux/pinctrl/pinconf-generic.h>
 #include <linux/pinctrl/pinmux.h>
 #include <linux/regulator/consumer.h>
 #include <linux/platform_device.h>
@@ -598,20 +599,6 @@ static int sunxi_pconf_reg(unsigned pin, enum pin_config_param param,
 		*mask = POWER_SOURCE_MASK;
 		break;
 
-#if IS_ENABLED(CONFIG_PINCTRL_SUNXI_DEBUGFS)
-	case SUNXI_PINCFG_TYPE_DAT:
-		*offset = sunxi_data_reg(pin, hw_type);
-		*shift = sunxi_data_offset(pin);
-		*mask = DATA_PINS_MASK;
-		break;
-
-	case SUNXI_PINCFG_TYPE_FUNC:
-		*offset = sunxi_mux_reg(pin, hw_type);
-		*shift = sunxi_mux_offset(pin);
-		*mask = MUX_PINS_MASK;
-		break;
-#endif
-
 	default:
 		return -ENOTSUPP;
 	}
@@ -663,12 +650,6 @@ static int sunxi_pconf_get(struct pinctrl_dev *pctldev, unsigned pin,
 		arg = val ? 3300 : 1800;
 		break;
 
-#if IS_ENABLED(CONFIG_PINCTRL_SUNXI_DEBUGFS)
-	case SUNXI_PINCFG_TYPE_DAT:
-	case SUNXI_PINCFG_TYPE_FUNC:
-		arg = val;
-		break;
-#endif
 	default:
 		/* sunxi_pconf_reg should catch anything unsupported */
 		WARN_ON(1);
@@ -756,14 +737,6 @@ static int sunxi_pconf_set(struct pinctrl_dev *pctldev, unsigned pin,
 
 			val = arg == 3300 ? 1 : 0;
 			break;
-#if IS_ENABLED(CONFIG_PINCTRL_SUNXI_DEBUGFS)
-		case SUNXI_PINCFG_TYPE_DAT:
-			val = arg;
-			break;
-		case SUNXI_PINCFG_TYPE_FUNC:
-			val = arg;
-			break;
-#endif
 		default:
 			/* sunxi_pconf_reg should catch anything unsupported */
 			WARN_ON(1);

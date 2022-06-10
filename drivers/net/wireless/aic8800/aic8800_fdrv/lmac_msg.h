@@ -52,11 +52,9 @@ enum {
 	TASK_MESH,
 	/// RXU task
 	TASK_RXU,
-	/// RM_task
-	TASK_RM,
 #if defined CONFIG_RWNX_FULLMAC || defined CONFIG_RWNX_FHOST
 	// This is used to define the last task that is running on the EMB processor
-	TASK_LAST_EMB = TASK_RM,
+	TASK_LAST_EMB = TASK_RXU,
 #else
 #error "Need to define SOFTMAC or FULLMAC"
 #endif
@@ -361,8 +359,8 @@ enum mm_msg_tag {
 	MM_GET_MAC_ADDR_REQ,
 	MM_GET_MAC_ADDR_CFM,
 
-	MM_GET_STA_INFO_REQ,
-	MM_GET_STA_INFO_CFM,
+	MM_GET_STA_TXINFO_REQ,
+	MM_GET_STA_TXINFO_CFM,
 
 	MM_SET_TXPWR_IDX_REQ,
 	MM_SET_TXPWR_IDX_CFM,
@@ -1172,26 +1170,23 @@ struct mm_get_mac_addr_cfm {
 	u8_l mac_addr[6];
 };
 
-struct mm_get_sta_info_req {
+struct mm_get_sta_txinfo_req {
 	u8_l sta_idx;
 };
 
-struct mm_get_sta_info_cfm {
+struct mm_get_sta_txinfo_cfm {
 	u32_l rate_info;
 	u32_l txfailed;
-	u8    rssi;
 };
 
 typedef struct {
 	u8_l enable;
 	u8_l dsss;
 	u8_l ofdmlowrate_2g4;
-	u8_l ofdm64qam_2g4;
-	u8_l ofdm256qam_2g4;
+	u8_l ofdmhighrate_2g4;
 	u8_l ofdm1024qam_2g4;
 	u8_l ofdmlowrate_5g;
-	u8_l ofdm64qam_5g;
-	u8_l ofdm256qam_5g;
+	u8_l ofdmhighrate_5g;
 	u8_l ofdm1024qam_5g;
 } txpwr_idx_conf_t;
 
@@ -1218,7 +1213,6 @@ struct mm_set_stack_start_req {
 	u8_l is_stack_start;
 	u8_l efuse_valid;
 	u8_l set_vendor_info;
-	u8_l fwtrace_redir;
 };
 
 struct mm_set_stack_start_cfm {

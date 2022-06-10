@@ -137,18 +137,6 @@ static int sunxi_pin_configure_show(struct seq_file *s, void *d)
 	}
 	pctl = pinctrl_dev_get_drvdata(pctldev);
 
-	/*get pin func*/
-	config = pinconf_to_config_packed(SUNXI_PINCFG_TYPE_FUNC, 0XFFFFFF);
-	pin_config_get(sunxi_dbg_devname, sunxi_dbg_pinname, &config);
-	seq_printf(s, "pin[%s] funciton: %lx\n", sunxi_dbg_pinname,
-					pinconf_to_config_argument(config));
-
-	/*get pin data*/
-	config = pinconf_to_config_packed(SUNXI_PINCFG_TYPE_DAT, 0XFFFFFF);
-	pin_config_get(sunxi_dbg_devname, sunxi_dbg_pinname, &config);
-	seq_printf(s, "pin[%s] data: %lx\n", sunxi_dbg_pinname,
-					pinconf_to_config_argument(config));
-
 	/* get pin dlevel */
 	config = pinconf_to_config_packed(PIN_CONFIG_DRIVE_STRENGTH, 0xFFFFFF);
 	pin_config_get(sunxi_dbg_devname, sunxi_dbg_pinname, &config);
@@ -179,8 +167,6 @@ static ssize_t sunxi_pin_configure_write(struct file *file,
 {
 	int err;
 	int pin;
-	unsigned int function;
-	unsigned int data;
 	unsigned int pull;
 	unsigned int dlevel;
 	unsigned long config;
@@ -190,22 +176,10 @@ static ssize_t sunxi_pin_configure_write(struct file *file,
 
 	if (copy_from_user(buf, user_buf, count))
 		return -EFAULT;
-
-	err = sscanf(buf, "%19s %u %u %u %u", sunxi_dbg_pinname,
-			&function, &data, &dlevel, &pull);
-
-	if (err != 5)
+	err = sscanf(buf, "%19s %u %u", sunxi_dbg_pinname,
+			&dlevel, &pull);
+	if (err != 4)
 		return -EINVAL;
-
-	if (function > 7) {
-		pr_err("Input Parameters function error!\n");
-		return -EINVAL;
-	}
-
-	if (data > 1) {
-		pr_err("Input Parameters data error!\n");
-		return -EINVAL;
-	}
 
 	if (pull > 3) {
 		pr_err("Input Parameters pull error!\n");
@@ -224,22 +198,11 @@ static ssize_t sunxi_pin_configure_write(struct file *file,
 
 	pin = pin_get_from_name(pctldev, sunxi_dbg_pinname);
 	if (pin < 0) {
-		pr_err("invalid pin:%s for sunxi_dbg_devname:%s\n",
-			sunxi_dbg_pinname, sunxi_dbg_devname);
+		pr_err("unvalid pin:%s for sunxi_dbg_devname:%s\n", sunxi_dbg_pinname, sunxi_dbg_devname);
 		return -EINVAL;
 	}
 
 	pctl = pinctrl_dev_get_drvdata(pctldev);
-
-	/* set function value*/
-	config = pinconf_to_config_packed(SUNXI_PINCFG_TYPE_FUNC, function);
-	pin_config_set(sunxi_dbg_devname, sunxi_dbg_pinname, config);
-	pr_debug("pin[%s] set function:     %x;\n", sunxi_dbg_pinname, function);
-
-	/* set data value*/
-	config = pinconf_to_config_packed(SUNXI_PINCFG_TYPE_DAT, data);
-	pin_config_set(sunxi_dbg_devname, sunxi_dbg_pinname, config);
-	pr_debug("pin[%s] set data:     %x;\n", sunxi_dbg_pinname, data);
 
 	/* set dlevel value */
 	config = pinconf_to_config_packed(PIN_CONFIG_DRIVE_STRENGTH, dlevel);
@@ -311,8 +274,7 @@ static int sunxi_pin_dlevel_show(struct seq_file *s, void *d)
 		return -EINVAL;
 	pin = pin_get_from_name(pctldev, sunxi_dbg_pinname);
 	if (pin < 0) {
-		pr_err("invalid pin:%s for sunxi_dbg_devname:%s\n",
-			sunxi_dbg_pinname, sunxi_dbg_devname);
+		pr_err("unvalid pin:%s for sunxi_dbg_devname:%s\n", sunxi_dbg_pinname, sunxi_dbg_devname);
 		return -EINVAL;
 	}
 	config = pinconf_to_config_packed(PIN_CONFIG_DRIVE_STRENGTH, 0xFFFFFF);
@@ -350,8 +312,7 @@ static ssize_t sunxi_pin_dlevel_write(struct file *file,
 
 	pin = pin_get_from_name(pctldev, sunxi_dbg_pinname);
 	if (pin < 0) {
-		pr_err("invalid pin:%s for sunxi_dbg_devname:%s\n",
-			sunxi_dbg_pinname, sunxi_dbg_devname);
+		pr_err("unvalid pin:%s for sunxi_dbg_devname:%s\n", sunxi_dbg_pinname, sunxi_dbg_devname);
 		return -EINVAL;
 	}
 
@@ -375,8 +336,7 @@ static int sunxi_pin_pull_show(struct seq_file *s, void *d)
 
 	pin = pin_get_from_name(pctldev, sunxi_dbg_pinname);
 	if (pin < 0) {
-		pr_err("invalid pin:%s for sunxi_dbg_devname:%s\n",
-			sunxi_dbg_pinname, sunxi_dbg_devname);
+		pr_err("unvalid pin:%s for sunxi_dbg_devname:%s\n", sunxi_dbg_pinname, sunxi_dbg_devname);
 		return -EINVAL;
 	}
 	/*get pin pull*/
@@ -427,8 +387,7 @@ static ssize_t sunxi_pin_pull_write(struct file *file,
 
 	pin = pin_get_from_name(pctldev, sunxi_dbg_pinname);
 	if (pin < 0) {
-		pr_err("invalid pin:%s for sunxi_dbg_devname:%s\n",
-			sunxi_dbg_pinname, sunxi_dbg_devname);
+		pr_err("unvalid pin:%s for sunxi_dbg_devname:%s\n", sunxi_dbg_pinname, sunxi_dbg_devname);
 		return -EINVAL;
 	}
 
@@ -437,18 +396,18 @@ static ssize_t sunxi_pin_pull_write(struct file *file,
 	case SUN4I_PINCTRL_NO_PULL:
 		config = pinconf_to_config_packed(PIN_CONFIG_BIAS_DISABLE, pull);
 		pin_config_set(sunxi_dbg_devname, sunxi_dbg_pinname, config);
-		pr_debug("pin[%s] set pull disable: 0x%lx;\n", sunxi_dbg_pinname, pull);
+		printk("pin[%s] set pull disable:     0x%lx;\n", sunxi_dbg_pinname, pull);
 		break;
 
 	case SUN4I_PINCTRL_PULL_UP:
 		config = pinconf_to_config_packed(PIN_CONFIG_BIAS_PULL_UP, pull);
 		pin_config_set(sunxi_dbg_devname, sunxi_dbg_pinname, config);
-		pr_debug("pin[%s] set pull up:     0x%lx;\n", sunxi_dbg_pinname, pull);
+		printk("pin[%s] set pull up:     0x%lx;\n", sunxi_dbg_pinname, pull);
 		break;
 	case SUN4I_PINCTRL_PULL_DOWN:
 		config = pinconf_to_config_packed(PIN_CONFIG_BIAS_PULL_DOWN, pull);
 		pin_config_set(sunxi_dbg_devname, sunxi_dbg_pinname, config);
-		pr_debug("pin[%s] set pull down:     0x%lx;\n", sunxi_dbg_pinname, pull);
+		printk("pin[%s] set pull down:     0x%lx;\n", sunxi_dbg_pinname, pull);
 		break;
 	default:
 		return -EINVAL;
@@ -485,49 +444,6 @@ static ssize_t sunxi_dev_name_write(struct file *file,
 	return count;
 }
 
-/*
- * add gpio function modify node
- */
-static ssize_t sunxi_pin_func_write(struct file *file,
-	const char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int err;
-	unsigned long function;
-	unsigned long config;
-	unsigned char buf[SUNXI_MAX_NAME_LEN];
-	int pin;
-	struct pinctrl_dev *pctldev;
-
-	if (copy_from_user(buf, user_buf, count))
-		return -EFAULT;
-
-	err = sscanf(buf, "%19s %lu", sunxi_dbg_pinname, &function);
-	if (err != 2)
-		return err;
-
-	if (function > 7) {
-		pr_debug("Input Parameters function error!\n");
-		return -EINVAL;
-	}
-
-	pctldev = get_pinctrl_dev_from_devname(sunxi_dbg_devname);
-	if (!pctldev)
-		return -EINVAL;
-
-	pin = pin_get_from_name(pctldev, sunxi_dbg_pinname);
-	if (pin < 0) {
-		pr_err("invalid pin:%s for sunxi_dbg_devname:%s\n",
-			sunxi_dbg_pinname, sunxi_dbg_devname);
-		return -EINVAL;
-	}
-
-	config = pinconf_to_config_packed(SUNXI_PINCFG_TYPE_FUNC, function);
-	pin_config_set(sunxi_dbg_devname, sunxi_dbg_pinname, config);
-	pr_debug("pin[%s] set function:     %x;\n", sunxi_dbg_pinname, function);
-
-	return count;
-}
-
 static int sunxi_pin_configure_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, sunxi_pin_configure_show, inode->i_private);
@@ -549,11 +465,6 @@ static int sunxi_pin_pull_open(struct inode *inode, struct file *file)
 }
 
 static int sunxi_dev_name_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, sunxi_dev_name_show, inode->i_private);
-}
-
-static int sunxi_pin_func_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, sunxi_dev_name_show, inode->i_private);
 }
@@ -603,15 +514,6 @@ static const struct file_operations sunxi_pin_pull_ops = {
 	.owner		= THIS_MODULE,
 };
 
-static const struct file_operations sunxi_pin_func_ops = {
-	.open		= sunxi_pin_func_open,
-	.write		= sunxi_pin_func_write,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-	.owner		= THIS_MODULE,
-};
-
 static int __init sunxi_pinctrl_debugfs_init(void)
 {
 	debugfs_root = debugfs_create_dir("sunxi_pinctrl", NULL);
@@ -632,8 +534,6 @@ static int __init sunxi_pinctrl_debugfs_init(void)
 			    debugfs_root, NULL, &sunxi_pin_pull_ops);
 	debugfs_create_file("dev_name", (S_IRUGO | S_IWUSR | S_IWGRP),
 			    debugfs_root, NULL, &sunxi_dev_name_ops);
-	debugfs_create_file("function", (S_IRUGO | S_IWUSR | S_IWGRP),
-			    debugfs_root, NULL, &sunxi_pin_func_ops);
 
 	return 0;
 }

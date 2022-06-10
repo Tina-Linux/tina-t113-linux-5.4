@@ -256,7 +256,7 @@ static inline int tm_to_hw_day_hhmmss(const struct sunxi_rtc_data *data,
 }
 
 /* Convert register value @hw_yymmdd and @hw_hhmmss to @tm */
-static __maybe_unused inline void hw_yymmdd_hhmmss_to_tm(const struct sunxi_rtc_data *data,
+static inline void hw_yymmdd_hhmmss_to_tm(const struct sunxi_rtc_data *data,
 				u32 hw_yymmdd, u32 hw_hhmmss, struct rtc_time *tm)
 {
 	u32 hw_year = GET_YEAR_FROM_REG(hw_yymmdd, data);
@@ -317,19 +317,29 @@ static int sunxi_rtc_gettime(struct device *dev, struct rtc_time *tm)
 	u32 hw_day, hw_hhmmss;
 	int err;
 
-	do {  /* read again in case it changes */
-		hw_day = rtc_reg_read(chip, RTC_DAY_REG);
-		hw_hhmmss = rtc_reg_read(chip, RTC_HHMMSS_REG);
-	} while ((hw_day != rtc_reg_read(chip, RTC_DAY_REG)) ||
-			(hw_hhmmss != rtc_reg_read(chip, RTC_HHMMSS_REG)));
-	err = hw_day_hhmmss_to_tm(chip->data, hw_day, hw_hhmmss, tm);
-	if (err)
-		return err;
-
+	if (chip->data->date_type == 0) {  /* 0: date is represent by YY-MM-DD and HH-MM-SS in hardware */
+		dev_err(dev, "sunxi_rtc_gettime(): date_type=%u: Not implemented yet\n", chip->data->date_type);
+		return -EINVAL;
+		/*
+		@TODO: read registers, get hw_yymmdd and hw_hhmmss
+		hw_yymmdd_hhmmss_to_tm(chip->data, hw_yymmdd, hw_hhmmss, tm);
+		*/
+	} else if (chip->data->date_type == 1) {  /* 1: date is represent by DAY and HH-MM-SS in hardware */
+		do {  /* read again in case it changes */
+			hw_day = rtc_reg_read(chip, RTC_DAY_REG);
+			hw_hhmmss = rtc_reg_read(chip, RTC_HHMMSS_REG);
+		} while ((hw_day != rtc_reg_read(chip, RTC_DAY_REG)) ||
+			 (hw_hhmmss != rtc_reg_read(chip, RTC_HHMMSS_REG)));
+		err = hw_day_hhmmss_to_tm(chip->data, hw_day, hw_hhmmss, tm);
+		if (err)
+			return err;
+	} else /* if (chip->data->date_type == 2) */ {  /* 2: date is represent by SECOND in hardware */
+		dev_err(dev, "sunxi_rtc_gettime(): date_type=%u: Not implemented yet\n", chip->data->date_type);
+		return -EINVAL;
+	}
 	err = rtc_valid_tm(tm);
 	if (err) {
 		dev_err(dev, "sunxi_rtc_gettime(): Invalid rtc_time: %ptR\n", tm);
-		return err;
 	}
 
 	dev_dbg(dev, "%s(): %ptR\n", __func__, tm);
@@ -360,32 +370,44 @@ static int sunxi_rtc_settime(struct device *dev, struct rtc_time *tm)
 		return -EINVAL;
 	}
 
-	err = tm_to_hw_day_hhmmss(chip->data, tm, &hw_day, &hw_hhmmss);
-	if (err)
-		return err;
-	/* Before writting RTC_HHMMSS_REG, we should check the RTC_HHMMSS_ACCESS bit */
-	err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_HHMMSS_ACCESS, 50);
-	if (err) {
-		dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (1)\n");
-		return err;
-	}
-	rtc_reg_write(chip, RTC_HHMMSS_REG, hw_hhmmss);
-	err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_HHMMSS_ACCESS, 50);
-	if (err) {
-		dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (2)\n");
-		return err;
-	}
-	/* Before writting RTC_DAY_REG, we should check the RTC_DAY_ACCESS bit */
-	err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_DAY_ACCESS, 50);
-	if (err) {
-		dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (3)\n");
-		return err;
-	}
-	rtc_reg_write(chip, RTC_DAY_REG, hw_day);
-	err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_DAY_ACCESS, 50);
-	if (err) {
-		dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (4)\n");
-		return err;
+	if (chip->data->date_type == 0) {  /* 0: date is represent by YY-MM-DD and HH-MM-SS in hardware */
+		dev_err(dev, "sunxi_rtc_settime(): date_type=%u: Not implemented yet\n", chip->data->date_type);
+		return -EINVAL;
+		/*
+		tm_to_hw_yymmdd_hhmmss(data, tm, &hw_yymmdd, &hw_hhmmss);
+		@TODO: write hw_yymmdd and hw_hhmmss to registers
+		*/
+	} else if (chip->data->date_type == 1) {  /* 1: date is represent by DAY and HH-MM-SS in hardware */
+		err = tm_to_hw_day_hhmmss(chip->data, tm, &hw_day, &hw_hhmmss);
+		if (err)
+			return err;
+		/* Before writting RTC_HHMMSS_REG, we should check the RTC_HHMMSS_ACCESS bit */
+		err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_HHMMSS_ACCESS, 50);
+		if (err) {
+			dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (1)\n");
+			return err;
+		}
+		rtc_reg_write(chip, RTC_HHMMSS_REG, hw_hhmmss);
+		err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_HHMMSS_ACCESS, 50);
+		if (err) {
+			dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (2)\n");
+			return err;
+		}
+		/* Before writting RTC_DAY_REG, we should check the RTC_DAY_ACCESS bit */
+		err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_DAY_ACCESS, 50);
+		if (err) {
+			dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (3)\n");
+			return err;
+		}
+		rtc_reg_write(chip, RTC_DAY_REG, hw_day);
+		err = wait_bits_cleared(chip, LOSC_CTRL_REG, RTC_DAY_ACCESS, 50);
+		if (err) {
+			dev_err(dev, "sunxi_rtc_settime(): wait_bits_cleared() timeout (4)\n");
+			return err;
+		}
+	} else /* if (chip->data->date_type == 2) */ {  /* 2: date is represent by SECOND in hardware */
+		dev_err(dev, "sunxi_rtc_settime(): date_type=%u: Not implemented yet\n", chip->data->date_type);
+		return -EINVAL;
 	}
 
 	return 0;
@@ -420,15 +442,27 @@ static int sunxi_rtc_getalarm(struct device *dev, struct rtc_wkalrm *wkalrm)
 	u32 hw_day, hw_hhmmss;
 	int err;
 
-	hw_day = rtc_reg_read(chip, ALARM0_DAY_REG);
-	hw_hhmmss = rtc_reg_read(chip, ALARM0_HHMMSS_REG);
-	err = hw_day_hhmmss_to_tm(chip->data, hw_day, hw_hhmmss, tm);
-	if (err)
-		return err;
-
+	if (chip->data->alarm_type == 0) {  /* 0: alarm is represent by YY-MM-DD and HH-MM-SS in hardware */
+		dev_err(dev, "sunxi_rtc_getalarm(): alarm_type=%u: Not implemented yet\n", chip->data->alarm_type);
+		return -EINVAL;
+		/*
+		@TODO: read registers, get hw_yymmdd and hw_hhmmss
+		hw_yymmdd_hhmmss_to_tm(chip->data, hw_yymmdd, hw_hhmmss, tm);
+		*/
+	} else if (chip->data->alarm_type == 1) {  /* 1: alarm is represent by DAY and HH-MM-SS in hardware */
+		hw_day = rtc_reg_read(chip, ALARM0_DAY_REG);
+		hw_hhmmss = rtc_reg_read(chip, ALARM0_HHMMSS_REG);
+		err = hw_day_hhmmss_to_tm(chip->data, hw_day, hw_hhmmss, tm);
+		if (err)
+			return err;
+	} else /* if (chip->data->alarm_type == 2) */ {  /* 2: alarm is represent by SECOND in hardware */
+		dev_err(dev, "sunxi_rtc_getalarm(): alarm_type=%u: Not implemented yet\n", chip->data->alarm_type);
+		return -EINVAL;
+	}
 	err = rtc_valid_tm(tm);
-	if (err)
+	if (err) {
 		dev_err(dev, "sunxi_rtc_getalarm(): Invalid rtc_time: %ptR\n", tm);
+	}
 
 	wkalrm->enabled = alarm0_is_enabled(chip);
 
@@ -452,11 +486,23 @@ static int sunxi_rtc_setalarm(struct device *dev, struct rtc_wkalrm *wkalrm)
 	}
 	//@TODO: check that tm should be later than current time?
 
-	err = tm_to_hw_day_hhmmss(chip->data, tm, &hw_day, &hw_hhmmss);
-	if (err)
-		return err;
-	rtc_reg_write(chip, ALARM0_DAY_REG, hw_day);
-	rtc_reg_write(chip, ALARM0_HHMMSS_REG, hw_hhmmss);
+	if (chip->data->alarm_type == 0) {  /* 0: alarm is represent by YY-MM-DD and HH-MM-SS in hardware */
+		dev_err(dev, "sunxi_rtc_setalarm(): alarm_type=%u: Not implemented yet\n", chip->data->alarm_type);
+		return -EINVAL;
+		/*
+		tm_to_hw_yymmdd_hhmmss(data, tm, &hw_yymmdd, &hw_hhmmss);
+		@TODO: write hw_yymmdd and hw_hhmmss to registers
+		*/
+	} else if (chip->data->alarm_type == 1) {  /* 1: alarm is represent by DAY and HH-MM-SS in hardware */
+		err = tm_to_hw_day_hhmmss(chip->data, tm, &hw_day, &hw_hhmmss);
+		if (err)
+			return err;
+		rtc_reg_write(chip, ALARM0_DAY_REG, hw_day);
+		rtc_reg_write(chip, ALARM0_HHMMSS_REG, hw_hhmmss);
+	} else /* if (chip->data->alarm_type == 2) */ {  /* 2: alarm is represent by SECOND in hardware */
+		dev_err(dev, "sunxi_rtc_setalarm(): alarm_type=%u: Not implemented yet\n", chip->data->alarm_type);
+		return -EINVAL;
+	}
 
 	alarm0_ctrl(chip, wkalrm->enabled);
 
@@ -592,7 +638,9 @@ static const struct rtc_class_ops sunxi_rtc_ops = {
 	.alarm_irq_enable = sunxi_rtc_alarm_irq_enable
 };
 
-static struct sunxi_rtc_data sunxi_rtc_v200_data = {
+static struct sunxi_rtc_data sun50iw10p1_rtc_data = {
+	.date_type  = 1,
+	.alarm_type = 1,
 	.min_year   = 1970,
 	.max_year   = HW_YEAR_MAX(1970),
 	.gpr_offset = 0x100,
@@ -600,11 +648,10 @@ static struct sunxi_rtc_data sunxi_rtc_v200_data = {
 };
 
 static const struct of_device_id sunxi_rtc_dt_ids[] = {
-	{.compatible = "allwinner,sun50iw10p1-rtc", .data = &sunxi_rtc_v200_data},
-	{.compatible = "allwinner,sun50iw12p1-rtc", .data = &sunxi_rtc_v200_data},
-	{.compatible = "allwinner,sun8iw20-rtc",    .data = &sunxi_rtc_v200_data},
-	{.compatible = "allwinner,sun20iw1-rtc",    .data = &sunxi_rtc_v200_data},
-	{.compatible = "allwinner,rtc-v200",        .data = &sunxi_rtc_v200_data},
+	{.compatible = "allwinner,sun50iw10p1-rtc", .data = &sun50iw10p1_rtc_data},
+	{.compatible = "allwinner,sun50iw12p1-rtc", .data = &sun50iw10p1_rtc_data},
+	{.compatible = "allwinner,sun8iw20-rtc",    .data = &sun50iw10p1_rtc_data},
+	{.compatible = "allwinner,sun20iw1-rtc",    .data = &sun50iw10p1_rtc_data},
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, sunxi_rtc_dt_ids);
@@ -964,7 +1011,8 @@ static int sunxi_rtc_probe(struct platform_device *pdev)
 	/* We must ensure the error value of ALARM0_DAY_REG is fixed before rtc_register_device().
 	 * Because ALARM0_DAY_REG will be read during registration.
 	 */
-	errata__fix_alarm_day_reg_default_value(chip->dev);
+	if (chip->data->alarm_type == 1)
+		errata__fix_alarm_day_reg_default_value(chip->dev);
 
 	/*
 	 * sunxi_rtc_poweroff_alarm() must be placed before IRQ setting up.
@@ -1076,4 +1124,4 @@ module_exit(sunxi_rtc_exit);
 MODULE_DESCRIPTION("sunxi RTC driver");
 MODULE_AUTHOR("Martin <wuyan@allwinnertech.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("1.1.2");
+MODULE_VERSION("1.1.1");

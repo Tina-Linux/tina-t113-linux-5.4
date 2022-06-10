@@ -719,12 +719,10 @@ nvram_info_t nvram_info = {
 		.enable           = 1,
 		.dsss             = 9,
 		.ofdmlowrate_2g4  = 8,
-		.ofdm64qam_2g4    = 8,
-		.ofdm256qam_2g4   = 8,
+		.ofdmhighrate_2g4 = 8,
 		.ofdm1024qam_2g4  = 8,
 		.ofdmlowrate_5g   = 11,
-		.ofdm64qam_5g     = 10,
-		.ofdm256qam_5g    = 9,
+		.ofdmhighrate_5g  = 10,
 		.ofdm1024qam_5g   = 9
 	},
 	.txpwr_ofst = {
@@ -765,12 +763,10 @@ static const struct parse_match_t parse_match_tab[] = {
 	MATCH_NODE(nvram_info_t, txpwr_idx.enable,           "enable"),
 	MATCH_NODE(nvram_info_t, txpwr_idx.dsss,             "dsss"),
 	MATCH_NODE(nvram_info_t, txpwr_idx.ofdmlowrate_2g4,  "ofdmlowrate_2g4"),
-	MATCH_NODE(nvram_info_t, txpwr_idx.ofdm64qam_2g4,    "ofdm64qam_2g4"),
-	MATCH_NODE(nvram_info_t, txpwr_idx.ofdm256qam_2g4,   "ofdm256qam_2g4"),
+	MATCH_NODE(nvram_info_t, txpwr_idx.ofdmhighrate_2g4, "ofdmhighrate_2g4"),
 	MATCH_NODE(nvram_info_t, txpwr_idx.ofdm1024qam_2g4,  "ofdm1024qam_2g4"),
 	MATCH_NODE(nvram_info_t, txpwr_idx.ofdmlowrate_5g,   "ofdmlowrate_5g"),
-	MATCH_NODE(nvram_info_t, txpwr_idx.ofdm64qam_5g,     "ofdm64qam_5g"),
-	MATCH_NODE(nvram_info_t, txpwr_idx.ofdm256qam_5g,    "ofdm256qam_5g"),
+	MATCH_NODE(nvram_info_t, txpwr_idx.ofdmhighrate_5g,  "ofdmhighrate_5g"),
 	MATCH_NODE(nvram_info_t, txpwr_idx.ofdm1024qam_5g,   "ofdm1024qam_5g"),
 
 	MATCH_NODE(nvram_info_t, txpwr_ofst.enable,          "ofst_enable"),
@@ -881,9 +877,8 @@ void rwnx_plat_userconfig_parsing(struct rwnx_hw *rwnx_hw, char *buffer)
 	}
 }
 
-#define AIC_FW_PATH              CONFIG_AIC_FW_PATH
-#define FW_PATH_MAX              200
-#define FW_USERCONFIG_NAME       "aic_userconfig.txt"
+static const char *aic_fw_path = "/vendor/etc/firmware";
+#define FW_PATH_MAX 200
 
 static int aic_load_firmware(u32 **fw_buf, const char *name, struct device *device)
 {
@@ -901,7 +896,7 @@ static int aic_load_firmware(u32 **fw_buf, const char *name, struct device *devi
 		return -1;
 	}
 
-	len = snprintf(path, FW_PATH_MAX, "%s/%s", AIC_FW_PATH, name);
+	len = snprintf(path, FW_PATH_MAX, "%s/%s", aic_fw_path, name);
 
 	if (len >= FW_PATH_MAX) {
 		printk("%s: %s file's path too long\n", __func__, name);
@@ -964,10 +959,12 @@ static int aic_load_firmware(u32 **fw_buf, const char *name, struct device *devi
 
 	if (rdlen > 0) {
 		fp->f_pos += rdlen;
+		printk("f_pos=%d\n", (int)fp->f_pos);
 	}
 
 	/*start to transform the data format*/
 	src = (u32 *)buffer;
+	printk("malloc dst\n");
 	dst = (u32 *)kzalloc(size, GFP_KERNEL);
 
 	if (!dst) {
@@ -1020,6 +1017,8 @@ int rwnx_plat_userconfig_upload_android(struct rwnx_hw *rwnx_hw, char *filename)
 	return 0;
 }
 
+#define FW_USERCONFIG_NAME    "aic_userconfig.txt"
+
 /**
  * rwnx_plat_fmac_load() - Load FW code
  *
@@ -1030,7 +1029,14 @@ static int rwnx_plat_fmac_load(struct rwnx_hw *rwnx_hw)
 	int ret = 0;
 
 	RWNX_DBG(RWNX_FN_ENTRY_STR);
+#if 1 //defined(CONFIG_NANOPI_M4) || defined(CONFIG_PLATFORM_ALLWINNER)
 	ret = rwnx_plat_userconfig_upload_android(rwnx_hw, FW_USERCONFIG_NAME);
+	//ret = rwnx_plat_bin_fw_upload_android(rwnx_hw, RAM_FMAC_FW_ADDR, RWNX_MAC_FW_NAME2);
+#else
+	ret = rwnx_plat_bin_fw_upload_2(rwnx_hw,
+								  RAM_FMAC_FW_ADDR,
+								  RWNX_MAC_FW_NAME2);
+#endif
 	return ret;
 }
 #endif /* !CONFIG_ROM_PATCH_EN */
@@ -1330,6 +1336,13 @@ int rwnx_platform_on(struct rwnx_hw *rwnx_hw, void *config)
 	RWNX_REG_WRITE(BOOTROM_ENABLE, rwnx_plat,
 				   RWNX_ADDR_SYSTEM, SYSCTRL_MISC_CNTL_ADDR);
 
+	#if 0
+	ret = rwnx_fw_trace_config_filters(rwnx_get_shared_trace_buf(rwnx_hw),
+											rwnx_ipc_fw_trace_desc_get(rwnx_hw),
+											rwnx_hw->mod_params->ftl);
+	if (ret)
+	#endif
+
 	#ifndef CONFIG_RWNX_FHOST
 	{
 		ret = rwnx_check_fw_compatibility(rwnx_hw);
@@ -1384,12 +1397,22 @@ void rwnx_platform_off(struct rwnx_hw *rwnx_hw, void **config)
 		return;
 	}
 
+#ifdef AICWF_PCIE_SUPPORT
+	rwnx_ipc_stop(rwnx_hw);
+#endif
+
 	if (config)
 		*config = rwnx_term_save_config(rwnx_hw->plat);
 
 	rwnx_hw->plat->disable(rwnx_hw);
 
 	tasklet_kill(&rwnx_hw->task);
+
+#ifdef AICWF_PCIE_SUPPORT
+	rwnx_ipc_deinit(rwnx_hw);
+#endif
+
+
 	rwnx_platform_reset(rwnx_hw->plat);
 
 	rwnx_hw->plat->enabled = false;

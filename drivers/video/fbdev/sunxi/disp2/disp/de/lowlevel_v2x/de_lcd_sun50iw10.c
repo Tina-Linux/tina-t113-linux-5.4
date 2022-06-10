@@ -136,37 +136,6 @@ s32 tcon1_tv_clk_enable(u32 sel, u32 en)
  */
 s32 tcon1_hdmi_clk_enable(u32 sel, u32 en)
 {
-	unsigned int tcon_index;
-
-	if (sel >= DEVICE_NUM)
-		return -1;
-	if (!de_feat_get_tcon_type(sel))
-		return -1;
-
-	tcon_index = de_feat_get_tcon_index(sel);
-	if (tcon_index < 0)
-		return -1;
-
-	if (tcon_index == 0)
-		lcd_top[0]->tcon_clk_gate.bits.tv0_clk_gate = en;
-	else
-		lcd_top[0]->tcon_clk_gate.bits.tv1_clk_gate = en;
-
-	if (en) {
-		if (tcon_index == 0)
-			lcd_top[0]->tcon_clk_gate.bits.hdmi_src = 1;
-		else if (tcon_index == 1)
-			lcd_top[0]->tcon_clk_gate.bits.hdmi_src = 2;
-	} else {
-		/* disable tcon output to hdmi */
-		if (((tcon_index == 0)
-		     && (lcd_top[0]->tcon_clk_gate.bits.hdmi_src == 1))
-		    || ((tcon_index == 1)
-			&& (lcd_top[0]->tcon_clk_gate.bits.hdmi_src == 2))) {
-			lcd_top[0]->tcon_clk_gate.bits.hdmi_src = 0;
-		}
-	}
-
 	return 0;
 }
 
@@ -1499,89 +1468,6 @@ s32 tcon1_cfg_ex(u32 sel, struct disp_panel_para *panel)
 
 s32 tcon1_hdmi_color_remap(u32 sel, u32 onoff, u32 is_yuv)
 {
-#if defined(CONFIG_ARCH_SUN8IW12)
-	if (is_yuv) {
-		lcd_dev[sel]->tcon_ceu_coef_rr.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_rg.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_rb.bits.value = 0x100;
-		lcd_dev[sel]->tcon_ceu_coef_rc.bits.value = 0;
-
-		lcd_dev[sel]->tcon_ceu_coef_gr.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_gg.bits.value = 0x100;
-		lcd_dev[sel]->tcon_ceu_coef_gb.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_gc.bits.value = 0;
-
-		lcd_dev[sel]->tcon_ceu_coef_br.bits.value = 0x100;
-		lcd_dev[sel]->tcon_ceu_coef_bg.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_bb.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_bc.bits.value = 0;
-
-		lcd_dev[sel]->tcon_ceu_coef_rv.bits.max = 255;
-		lcd_dev[sel]->tcon_ceu_coef_rv.bits.min = 0;
-		lcd_dev[sel]->tcon_ceu_coef_gv.bits.max = 255;
-		lcd_dev[sel]->tcon_ceu_coef_gv.bits.min = 0;
-		lcd_dev[sel]->tcon_ceu_coef_bv.bits.max = 255;
-		lcd_dev[sel]->tcon_ceu_coef_bv.bits.min = 0;
-	} else {
-		lcd_dev[sel]->tcon_ceu_coef_rr.bits.value = 0x100;
-		lcd_dev[sel]->tcon_ceu_coef_rg.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_rb.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_rc.bits.value = 0;
-
-		lcd_dev[sel]->tcon_ceu_coef_gr.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_gg.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_gb.bits.value = 0x100;
-		lcd_dev[sel]->tcon_ceu_coef_gc.bits.value = 0;
-
-		lcd_dev[sel]->tcon_ceu_coef_br.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_bg.bits.value = 0x100;
-		lcd_dev[sel]->tcon_ceu_coef_bb.bits.value = 0;
-		lcd_dev[sel]->tcon_ceu_coef_bc.bits.value = 0;
-
-		lcd_dev[sel]->tcon_ceu_coef_rv.bits.max = 255;
-		lcd_dev[sel]->tcon_ceu_coef_rv.bits.min = 0;
-		lcd_dev[sel]->tcon_ceu_coef_gv.bits.max = 255;
-		lcd_dev[sel]->tcon_ceu_coef_gv.bits.min = 0;
-		lcd_dev[sel]->tcon_ceu_coef_bv.bits.max = 255;
-		lcd_dev[sel]->tcon_ceu_coef_bv.bits.min = 0;
-	}
-	lcd_dev[sel]->tcon_ceu_ctl.bits.ceu_en = 1;
-#else
-	/*
-	 * plane sequence:
-	 * v: 16~240
-	 * y: 16~235
-	 * u: 16~240
-	 */
-	lcd_dev[sel]->tcon_ceu_coef_rr.bits.value = 0;
-	lcd_dev[sel]->tcon_ceu_coef_rg.bits.value = 0;
-	lcd_dev[sel]->tcon_ceu_coef_rb.bits.value = 0x100;
-	lcd_dev[sel]->tcon_ceu_coef_rc.bits.value = 0;
-
-	lcd_dev[sel]->tcon_ceu_coef_gr.bits.value = 0x100;
-	lcd_dev[sel]->tcon_ceu_coef_gg.bits.value = 0;
-	lcd_dev[sel]->tcon_ceu_coef_gb.bits.value = 0;
-	lcd_dev[sel]->tcon_ceu_coef_gc.bits.value = 0;
-
-	lcd_dev[sel]->tcon_ceu_coef_br.bits.value = 0;
-	lcd_dev[sel]->tcon_ceu_coef_bg.bits.value = 0x100;
-	lcd_dev[sel]->tcon_ceu_coef_bb.bits.value = 0;
-	lcd_dev[sel]->tcon_ceu_coef_bc.bits.value = 0;
-
-	lcd_dev[sel]->tcon_ceu_coef_rv.bits.max = 240;
-	lcd_dev[sel]->tcon_ceu_coef_rv.bits.min = 16;
-	lcd_dev[sel]->tcon_ceu_coef_gv.bits.max = 235;
-	lcd_dev[sel]->tcon_ceu_coef_gv.bits.min = 16;
-	lcd_dev[sel]->tcon_ceu_coef_bv.bits.max = 240;
-	lcd_dev[sel]->tcon_ceu_coef_bv.bits.min = 16;
-	if (onoff)
-		lcd_dev[sel]->tcon_ceu_ctl.bits.ceu_en = 1;
-	else
-		lcd_dev[sel]->tcon_ceu_ctl.bits.ceu_en = 0;
-
-#endif /*endif CONFIG_SUN8 */
-
-
 	return 0;
 }
 
@@ -1642,8 +1528,7 @@ s32 tcon1_set_timming(u32 sel, struct disp_video_timings *timming)
 	lcd_dev[sel]->tcon1_io_tri.bits.io3_output_tri_en = 1;
 	lcd_dev[sel]->tcon1_io_tri.bits.data_output_tri_en = 0xffffff;
 #endif
-	/*select the source of hdmi*/
-	lcd_dev[0]->tcon_mul_ctl.bits.hdmi_src = sel;
+
 	return 0;
 }
 

@@ -152,11 +152,6 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 #endif
 
 	if (wakeup_enable) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
-		ws = wakeup_source_register(dev, "wifisleep");
-#else
-		wake_lock_init(&irq_wakelock, WAKE_LOCK_SUSPEND, "wifisleep");
-#endif
 		ret = device_init_wakeup(dev, true);
 		if (ret < 0) {
 			pr_err("%s(%d): device init wakeup failed!\n", __func__, __LINE__);
@@ -177,6 +172,11 @@ static int rwnx_register_hostwake_irq(struct device *dev)
 			pr_err("%s(%d): request_irq fail! ret = %d\n", __func__, __LINE__, ret);
 			goto fail2;
 		}
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+		ws = wakeup_source_register(dev, "wifisleep");
+#else
+		wake_lock_init(&irq_wakelock, WAKE_LOCK_SUSPEND, "wifisleep");
+#endif
 	}
 	disable_irq(hostwake_irq_num);
 	printk("%s(%d)\n", __func__, __LINE__);
@@ -186,11 +186,6 @@ fail2:
 	dev_pm_clear_wake_irq(dev);
 fail1:
 	device_init_wakeup(dev, false);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
-	wakeup_source_unregister(ws);
-#else
-	wake_lock_destroy(&irq_wakelock);
-#endif
 	return ret;
 }
 
@@ -484,6 +479,7 @@ int aicwf_sdio_sleep_allow(struct aic_sdio_dev *sdiodev)
 	int ret = 0;
 	struct aicwf_bus *bus_if = sdiodev->bus_if;
 	struct rwnx_hw *rwnx_hw = sdiodev->rwnx_hw;
+	struct rwnx_vif *rwnx_vif, *tmp;
 
 	if (bus_if->state == BUS_DOWN_ST) {
 		ret = aicwf_sdio_writeb(sdiodev, SDIOWIFI_SLEEP_REG, 0x10);
@@ -493,6 +489,28 @@ int aicwf_sdio_sleep_allow(struct aic_sdio_dev *sdiodev)
 		aicwf_sdio_pwrctl_timer(sdiodev, 0);
 		return ret;
 	}
+
+	spin_lock_bh(&rwnx_hw->cb_lock);
+	list_for_each_entry_safe(rwnx_vif, tmp, &rwnx_hw->vifs, list) {
+		if ((rwnx_hw->avail_idx_map & BIT(rwnx_vif->drv_vif_index)) == 0) {
+			switch (RWNX_VIF_TYPE(rwnx_vif)) {
+			case NL80211_IFTYPE_P2P_CLIENT:
+				rwnx_hw->is_p2p_alive = 1;
+				spin_unlock_bh(&rwnx_hw->cb_lock);
+				return ret;
+			case NL80211_IFTYPE_AP:
+				spin_unlock_bh(&rwnx_hw->cb_lock);
+				return ret;
+			case NL80211_IFTYPE_P2P_GO:
+				rwnx_hw->is_p2p_alive = 1;
+				spin_unlock_bh(&rwnx_hw->cb_lock);
+				return ret;
+			default:
+				break;
+			}
+		}
+	}
+	spin_unlock_bh(&rwnx_hw->cb_lock);
 
 	sdio_info("sleep: %d, %d\n", sdiodev->state, scanning);
 	if (sdiodev->state == SDIO_ACTIVE_ST  && !scanning && !rwnx_hw->is_p2p_alive \
@@ -656,7 +674,7 @@ static int aicwf_sdio_tx_msg(struct aic_sdio_dev *sdiodev)
 		len = payload_len;
 
 	buffer_cnt = aicwf_sdio_flow_ctrl(sdiodev);
-	while ((buffer_cnt <= 0 || (buffer_cnt > 0 && len > (buffer_cnt * BUFFER_SIZE))) && retry < 10) {
+	while ((buffer_cnt <= 0 || (buffer_cnt > 0 && len > (buffer_cnt * BUFFER_SIZE))) && retry < 5) {
 		retry++;
 		buffer_cnt = aicwf_sdio_flow_ctrl(sdiodev);
 		printk("buffer_cnt = %d\n", buffer_cnt);
@@ -804,8 +822,6 @@ static int aicwf_sdio_bus_txmsg(struct device *dev, u8 *msg, uint msglen)
 	return 0;
 }
 
-#define DATA_FLOW_CTRL_THRESH 1
-
 int aicwf_sdio_send(struct aicwf_tx_priv *tx_priv)
 {
 	struct sk_buff *pkt;
@@ -822,20 +838,19 @@ int aicwf_sdio_send(struct aicwf_tx_priv *tx_priv)
 		goto done;
 	}
 
-	if (tx_priv->fw_avail_bufcnt <= DATA_FLOW_CTRL_THRESH) {//0) { //flow control failed
+	if (tx_priv->fw_avail_bufcnt <= 0) { //flow control failed
 		tx_priv->fw_avail_bufcnt = aicwf_sdio_flow_ctrl(sdiodev);
-		while (tx_priv->fw_avail_bufcnt <= DATA_FLOW_CTRL_THRESH && retry_times < max_retry_times) {
+		while (tx_priv->fw_avail_bufcnt <= 0 && retry_times < max_retry_times) {
 			retry_times++;
 			tx_priv->fw_avail_bufcnt = aicwf_sdio_flow_ctrl(sdiodev);
-			if (tx_priv->fw_avail_bufcnt == DATA_FLOW_CTRL_THRESH)
-				udelay(200);
 		}
-		if (tx_priv->fw_avail_bufcnt <= DATA_FLOW_CTRL_THRESH) {//0) {
+		if (tx_priv->fw_avail_bufcnt <= 0) {
+			sdio_err("fc retry %d fail\n", tx_priv->fw_avail_bufcnt);
 			goto done;
 		}
 	}
 
-	if (atomic_read(&tx_priv->aggr_count) == (tx_priv->fw_avail_bufcnt - DATA_FLOW_CTRL_THRESH)) {
+	if (atomic_read(&tx_priv->aggr_count) == tx_priv->fw_avail_bufcnt) {
 		if (atomic_read(&tx_priv->aggr_count) > 0) {
 			tx_priv->fw_avail_bufcnt -= atomic_read(&tx_priv->aggr_count);
 			aicwf_sdio_aggr_send(tx_priv); //send and check the next pkt;
@@ -879,7 +894,6 @@ int aicwf_sdio_aggr(struct aicwf_tx_priv *tx_priv, struct sk_buff *pkt)
 	u8 adjust_str[4] = {0, 0, 0, 0};
 	u32 curr_len = 0;
 	int allign_len = 0;
-	int headroom;
 
 	sdio_header[0] = ((pkt->len - sizeof(struct rwnx_txhdr) + sizeof(struct txdesc_api)) & 0xff);
 	sdio_header[1] = (((pkt->len - sizeof(struct rwnx_txhdr) + sizeof(struct txdesc_api)) >> 8)&0x0f);
@@ -907,9 +921,8 @@ int aicwf_sdio_aggr(struct aicwf_tx_priv *tx_priv, struct sk_buff *pkt)
 	tx_priv->aggr_buf->dev = pkt->dev;
 
 	if (!txhdr->sw_hdr->need_cfm) {
-		headroom = txhdr->sw_hdr->headroom;
 		kmem_cache_free(txhdr->sw_hdr->rwnx_vif->rwnx_hw->sw_txhdr_cache, txhdr->sw_hdr);
-		skb_pull(pkt, headroom);
+		skb_pull(pkt, txhdr->sw_hdr->headroom);
 		consume_skb(pkt);
 	}
 
@@ -1195,7 +1208,6 @@ int aicwf_sdio_func_init(struct aic_sdio_dev *sdiodev)
 	u8 byte_mode_disable = 0x1;//1: no byte mode
 	int ret = 0;
 	struct aicbsp_feature_t feature;
-	u8 val = 0;
 
 	aicbsp_get_feature(&feature);
 	host = sdiodev->func->card->host;
@@ -1246,17 +1258,6 @@ int aicwf_sdio_func_init(struct aic_sdio_dev *sdiodev)
 		return ret;
 	}
 
-	mdelay(2);
-	ret = aicwf_sdio_readb(sdiodev, SDIOWIFI_SLEEP_REG, &val);
-	if (ret < 0) {
-		sdio_err("reg:%d read failed!\n", SDIOWIFI_SLEEP_REG);
-		return ret;
-	}
-
-	if(!(val & 0x10))
-		sdio_dbg("wakeup fail\n");
-	else
-		sdio_info("sdio ready\n");
 	return ret;
 }
 

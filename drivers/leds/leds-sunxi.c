@@ -18,6 +18,7 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/slab.h>
+#include <linux/pm.h>
 #include <linux/clk.h>
 #include <linux/dmaengine.h>
 #include <linux/interrupt.h>
@@ -29,10 +30,6 @@
 #include <linux/delay.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
-
-#if IS_ENABLED(CONFIG_PM)
-#include <linux/pm.h>
-#endif
 #include "leds-sunxi.h"
 
 /* For debug */
@@ -1887,147 +1884,87 @@ static int sunxi_led_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_PM)
-static inline void sunxi_led_save_regs(struct sunxi_led *led)
+#ifdef CONFIG_PM
+static int led_select_gpio_state(struct pinctrl *pctrl, char *name)
 {
-	int i;
+	int ret = 0;
+	struct pinctrl_state *pctrl_state = NULL;
 
-	for (i = 0; i < ARRAY_SIZE(sunxi_led_regs_offset); i++)
-		led->regs_backup[i] = readl(led->iomem_reg_base + sunxi_led_regs_offset[i]);
-}
-
-static inline void sunxi_led_restore_regs(struct sunxi_led *led)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_led_regs_offset); i++)
-		writel(led->regs_backup[i], led->iomem_reg_base + sunxi_led_regs_offset[i]);
-}
-
-static void sunxi_led_enable_irq(struct sunxi_led *led)
-{
-	enable_irq(led->irqnum);
-}
-
-static void sunxi_led_disable_irq(struct sunxi_led *led)
-{
-	disable_irq_nosync(led->irqnum);
-}
-
-static int sunxi_led_gpio_state_select(struct sunxi_led *led, char *name)
-{
-	int err;
-	struct pinctrl_state *pctrl_state;
-
-	pctrl_state = pinctrl_lookup_state(led->pctrl, name);
+	pctrl_state = pinctrl_lookup_state(pctrl, name);
 	if (IS_ERR(pctrl_state)) {
-		dev_err(led->dev, "pinctrl_lookup_state(%s) failed! return %p\n",
+		LED_ERR("pinctrl_lookup_state(%s) failed! return %p\n",
 				name, pctrl_state);
-		return PTR_ERR(pctrl_state);
+		return -1;
 	}
 
-	err = pinctrl_select_state(led->pctrl, pctrl_state);
-	if (err < 0) {
-		dev_err(led->dev, "pinctrl_select_state(%s) failed! return %d\n",
-				name, err);
-		return err;
-	}
+	ret = pinctrl_select_state(pctrl, pctrl_state);
+	if (ret < 0)
+		LED_ERR("pinctrl_select_state(%s) failed! return %d\n",
+				name, ret);
 
-	return 0;
+	return ret;
 }
 
-static void sunxi_led_enable_clk(struct sunxi_led *led)
+static int led_regulator_enable(struct sunxi_led *led)
 {
-	clk_prepare_enable(led->clk_ledc);
-	clk_prepare_enable(led->clk_cpuapb);
-}
-
-static void sunxi_led_disable_clk(struct sunxi_led *led)
-{
-	clk_disable_unprepare(led->clk_cpuapb);
-	clk_disable_unprepare(led->clk_ledc);
-}
-
-static int sunxi_led_power_on(struct sunxi_led *led)
-{
-	int err;
-
 	if (led->regulator == NULL)
 		return 0;
 
-	err = regulator_enable(led->regulator);
-	if (err) {
-		dev_err(led->dev, "enable regulator %s failed!\n", led->regulator_id);
-		return err;
+	if (regulator_enable(led->regulator) != 0) {
+		LED_ERR("enable regulator %s failed!\n", led->regulator_id);
+		return -1;
 	}
 	return 0;
 }
 
-static int sunxi_led_power_off(struct sunxi_led *led)
+static int led_regulator_disable(struct sunxi_led *led)
 {
-	int err;
-
 	if (led->regulator == NULL)
 		return 0;
 
-	err = regulator_disable(led->regulator);
-	if (err) {
-		dev_err(led->dev, "disable regulator %s failed!\n", led->regulator_id);
-		return err;
+	if (regulator_disable(led->regulator) != 0) {
+		LED_ERR("enable regulator %s failed!\n", led->regulator_id);
+		return -1;
 	}
 	return 0;
 }
 
-static int sunxi_led_suspend(struct device *dev)
+static int sunxi_led_suspend_noirq(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sunxi_led *led = platform_get_drvdata(pdev);
 
-	dev_dbg(led->dev, "[%s] enter standby\n", __func__);
+	sunxi_clk_disable(led);
+	led_select_gpio_state(led->pctrl, PINCTRL_STATE_SLEEP);
+	led_regulator_disable(led);
 
-	sunxi_led_disable_irq(led);
-
-	sunxi_led_save_regs(led);
-
-	sunxi_led_gpio_state_select(led, PINCTRL_STATE_SLEEP);
-
-	sunxi_led_disable_clk(led);
-
-	reset_control_assert(led->reset);
-
-	sunxi_led_power_off(led);
+	dprintk(DEBUG_SUSPEND, "finish\n");
 
 	return 0;
 }
 
-static int sunxi_led_resume(struct device *dev)
+static int sunxi_led_resume_noirq(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sunxi_led *led = platform_get_drvdata(pdev);
 
-	dev_dbg(led->dev, "[%s] return from standby\n", __func__);
+	led_regulator_enable(led);
+	led_select_gpio_state(led->pctrl, PINCTRL_STATE_DEFAULT);
+	sunxi_clk_enable(led);
 
-	sunxi_led_power_on(led);
-
-	reset_control_deassert(led->reset);
-
-	sunxi_led_enable_clk(led);
-
-	sunxi_led_gpio_state_select(led, PINCTRL_STATE_DEFAULT);
-
-	sunxi_led_restore_regs(led);
-
-	sunxi_led_enable_irq(led);
+	dprintk(DEBUG_SUSPEND, "finish\n");
 
 	return 0;
 }
 
-static const struct dev_pm_ops sunxi_led_pm_ops = {
-	.suspend = sunxi_led_suspend,
-	.resume = sunxi_led_resume,
+static const struct dev_pm_ops sunxi_led_dev_pm_ops = {
+	.suspend_noirq	 = sunxi_led_suspend_noirq,
+	.resume_noirq	 = sunxi_led_resume_noirq,
 };
 
-#define SUNXI_LED_PM_OPS (&sunxi_led_pm_ops)
+#define SUNXI_LED_DEV_PM_OPS (&sunxi_led_dev_pm_ops)
+#else
+#define SUNXI_LED_DEV_PM_OPS NULL
 #endif
 
 static const struct of_device_id sunxi_led_dt_ids[] = {
@@ -2041,9 +1978,7 @@ static struct platform_driver sunxi_led_driver = {
 	.driver		= {
 		.name	= "sunxi-leds",
 		.owner	= THIS_MODULE,
-#if IS_ENABLED(CONFIG_PM)
-		.pm	= SUNXI_LED_PM_OPS,
-#endif
+		.pm	= SUNXI_LED_DEV_PM_OPS,
 		.of_match_table = sunxi_led_dt_ids,
 	},
 };

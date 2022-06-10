@@ -915,7 +915,7 @@ static void __usb_passby(struct sunxi_hci_hcd *sunxi_hci, u32 enable,
 			/* AHB Master interface burst type INCR4 enable */
 			reg_value |= (1 << 9);
 			/* AHB Master interface INCRX align enable */
-			reg_value |= (1 << 8);
+			reg_value |= (0 << 8);
 			if (sunxi_hci->usbc_no == HCI0_USBC_NO)
 #ifdef SUNXI_USB_FPGA
 				/* enable ULPI, disable UTMI */

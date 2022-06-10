@@ -22,7 +22,6 @@
 #include "rwnx_radar.h"
 #include "rwnx_tx.h"
 
-#ifdef CONFIG_DEBUG_FS
 #ifdef CONFIG_RWNX_FULLMAC
 static ssize_t rwnx_dbgfs_stats_read(struct file *file,
 									 char __user *user_buf,
@@ -783,49 +782,88 @@ static ssize_t rwnx_dbgfs_noa_write(struct file *file,
 DEBUGFS_WRITE_FILE_OPS(noa);
 #endif /* CONFIG_RWNX_P2P_DEBUGFS */
 
-static char fw_log_buffer[FW_LOG_SIZE];
+struct rwnx_dbgfs_fw_trace {
+	struct rwnx_fw_trace_local_buf lbuf;
+	struct rwnx_fw_trace *trace;
+	struct rwnx_hw *rwnx_hw;
+};
 
-static ssize_t rwnx_dbgfs_fw_log_read(struct file *file,
+static int rwnx_dbgfs_fw_trace_open(struct inode *inode, struct file *file)
+{
+	struct rwnx_dbgfs_fw_trace *ltrace = kmalloc(sizeof(*ltrace), GFP_KERNEL);
+	struct rwnx_hw *priv = inode->i_private;
+
+	if (!ltrace)
+		return -ENOMEM;
+
+	if (rwnx_fw_trace_alloc_local(&ltrace->lbuf, 5120)) {
+		kfree(ltrace);
+	}
+
+	ltrace->trace = &priv->debugfs.fw_trace;
+	ltrace->rwnx_hw = priv;
+	file->private_data = ltrace;
+	return 0;
+}
+
+static int rwnx_dbgfs_fw_trace_release(struct inode *inode, struct file *file)
+{
+	struct rwnx_dbgfs_fw_trace *ltrace = file->private_data;
+
+	if (ltrace) {
+		rwnx_fw_trace_free_local(&ltrace->lbuf);
+		kfree(ltrace);
+	}
+
+	return 0;
+}
+
+static ssize_t rwnx_dbgfs_fw_trace_read(struct file *file,
+										char __user *user_buf,
+										size_t count, loff_t *ppos)
+{
+	struct rwnx_dbgfs_fw_trace *ltrace = file->private_data;
+	bool dont_wait = ((file->f_flags & O_NONBLOCK) ||
+					  ltrace->rwnx_hw->debugfs.unregistering);
+
+	return rwnx_fw_trace_read(ltrace->trace, &ltrace->lbuf,
+							  dont_wait, user_buf, count);
+}
+
+static ssize_t rwnx_dbgfs_fw_trace_write(struct file *file,
+										 const char __user *user_buf,
+										 size_t count, loff_t *ppos)
+{
+	struct rwnx_dbgfs_fw_trace *ltrace = file->private_data;
+	int ret;
+
+	ret = _rwnx_fw_trace_reset(ltrace->trace, true);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+DEBUGFS_READ_WRITE_OPEN_RELEASE_FILE_OPS(fw_trace);
+
+static ssize_t rwnx_dbgfs_fw_trace_level_read(struct file *file,
 											  char __user *user_buf,
 											  size_t count, loff_t *ppos)
 {
 	struct rwnx_hw *priv = file->private_data;
-	size_t not_cpy;
-	size_t nb_cpy;
-	char *log = fw_log_buffer;
-
-	printk("%s, %d, %p, %p\n", __func__, priv->debugfs.fw_log.buf.size, priv->debugfs.fw_log.buf.start, priv->debugfs.fw_log.buf.dataend);
-	//spin_lock_bh(&priv->debugfs.fw_log.lock);
-
-	if ((priv->debugfs.fw_log.buf.start + priv->debugfs.fw_log.buf.size) >= priv->debugfs.fw_log.buf.dataend) {
-		memcpy(log, priv->debugfs.fw_log.buf.start, priv->debugfs.fw_log.buf.dataend - priv->debugfs.fw_log.buf.start);
-		not_cpy = copy_to_user(user_buf, log, priv->debugfs.fw_log.buf.dataend - priv->debugfs.fw_log.buf.start);
-		nb_cpy = priv->debugfs.fw_log.buf.dataend - priv->debugfs.fw_log.buf.start - not_cpy;
-		priv->debugfs.fw_log.buf.start = priv->debugfs.fw_log.buf.data;
-	} else {
-		memcpy(log, priv->debugfs.fw_log.buf.start, priv->debugfs.fw_log.buf.size);
-		not_cpy = copy_to_user(user_buf, log, priv->debugfs.fw_log.buf.size);
-		nb_cpy = priv->debugfs.fw_log.buf.size - not_cpy;
-		priv->debugfs.fw_log.buf.start = priv->debugfs.fw_log.buf.start + priv->debugfs.fw_log.buf.size - not_cpy;
-	}
-
-	priv->debugfs.fw_log.buf.size -= nb_cpy;
-	//spin_unlock_bh(&priv->debugfs.fw_log.lock);
-
-	printk("nb_cpy=%lu, not_cpy=%lu, start=%p, end=%p\n", nb_cpy, not_cpy, priv->debugfs.fw_log.buf.start, priv->debugfs.fw_log.buf.end);
-	return nb_cpy;
+	return rwnx_fw_trace_level_read(&priv->debugfs.fw_trace, user_buf,
+									count, ppos);
 }
 
-static ssize_t rwnx_dbgfs_fw_log_write(struct file *file,
+static ssize_t rwnx_dbgfs_fw_trace_level_write(struct file *file,
 											   const char __user *user_buf,
 											   size_t count, loff_t *ppos)
 {
-	//struct rwnx_hw *priv = file->private_data;
-
-	printk("%s\n", __func__);
-	return count;
+	struct rwnx_hw *priv = file->private_data;
+	return rwnx_fw_trace_level_write(&priv->debugfs.fw_trace, user_buf, count);
 }
-DEBUGFS_READ_WRITE_FILE_OPS(fw_log);
+DEBUGFS_READ_WRITE_FILE_OPS(fw_trace_level);
+
 
 #ifdef CONFIG_RWNX_RADAR
 static ssize_t rwnx_dbgfs_pulses_read(struct file *file,
@@ -1751,6 +1789,33 @@ DEBUGFS_READ_WRITE_FILE_OPS(last_rx);
 
 #endif /* CONFIG_RWNX_FULLMAC */
 
+/*
+ * trace helper
+ */
+void rwnx_fw_trace_dump(struct rwnx_hw *rwnx_hw)
+{
+	/* may be called before rwnx_dbgfs_register */
+	if (rwnx_hw->plat->enabled && !rwnx_hw->debugfs.fw_trace.buf.data) {
+		rwnx_fw_trace_buf_init(&rwnx_hw->debugfs.fw_trace.buf,
+							   rwnx_ipc_fw_trace_desc_get(rwnx_hw));
+	}
+
+	if (!rwnx_hw->debugfs.fw_trace.buf.data)
+		return;
+
+	_rwnx_fw_trace_dump(&rwnx_hw->debugfs.fw_trace.buf);
+}
+
+void rwnx_fw_trace_reset(struct rwnx_hw *rwnx_hw)
+{
+	_rwnx_fw_trace_reset(&rwnx_hw->debugfs.fw_trace, true);
+}
+
+void rwnx_dbgfs_trigger_fw_dump(struct rwnx_hw *rwnx_hw, char *reason)
+{
+	rwnx_send_dbg_trigger_req(rwnx_hw, reason);
+}
+
 #ifdef CONFIG_RWNX_FULLMAC
 static void rwnx_rc_stat_work(struct work_struct *ws)
 {
@@ -1927,8 +1992,6 @@ int rwnx_dbgfs_register(struct rwnx_hw *rwnx_hw, const char *name)
 	struct rwnx_debugfs *rwnx_debugfs = &rwnx_hw->debugfs;
 	struct dentry *dir_drv, *dir_diags;
 
-	RWNX_DBG(RWNX_FN_ENTRY_STR);
-
 	dir_drv = debugfs_create_dir(name, phyd);
 	if (!dir_drv)
 		return -ENOMEM;
@@ -1976,10 +2039,19 @@ int rwnx_dbgfs_register(struct rwnx_hw *rwnx_hw, const char *name)
 	}
 #endif /* CONFIG_RWNX_P2P_DEBUGFS */
 
-	if (rwnx_hw->fwlog_en) {
-		rwnx_fw_log_init(&rwnx_hw->debugfs.fw_log);
-		DEBUGFS_ADD_FILE(fw_log, dir_drv, S_IWUSR | S_IRUSR);
+	if (rwnx_dbgfs_register_fw_dump(rwnx_hw, dir_drv, dir_diags))
+		goto err;
+	DEBUGFS_ADD_FILE(fw_dbg, dir_diags, S_IWUSR | S_IRUSR);
+
+	if (!rwnx_fw_trace_init(&rwnx_hw->debugfs.fw_trace,
+							rwnx_ipc_fw_trace_desc_get(rwnx_hw))) {
+		DEBUGFS_ADD_FILE(fw_trace, dir_diags, S_IWUSR | S_IRUSR);
+		if (rwnx_hw->debugfs.fw_trace.buf.nb_compo)
+			DEBUGFS_ADD_FILE(fw_trace_level, dir_diags, S_IWUSR | S_IRUSR);
+	} else {
+		rwnx_debugfs->fw_trace.buf.data = NULL;
 	}
+
 #ifdef CONFIG_RWNX_RADAR
 	{
 		struct dentry *dir_radar, *dir_sec;
@@ -2018,7 +2090,10 @@ void rwnx_dbgfs_unregister(struct rwnx_hw *rwnx_hw)
 {
 	struct rwnx_debugfs *rwnx_debugfs = &rwnx_hw->debugfs;
 #ifdef CONFIG_RWNX_FULLMAC
-	struct rwnx_rc_config_save *cfg, *next;
+		struct rwnx_rc_config_save *cfg, *next;
+#endif
+#if defined(AICWF_USB_SUPPORT) || defined(AICWF_SDIO_SUPPORT)
+	return;
 #endif
 
 #ifdef CONFIG_RWNX_FULLMAC
@@ -2028,19 +2103,17 @@ void rwnx_dbgfs_unregister(struct rwnx_hw *rwnx_hw)
 	}
 #endif /* CONFIG_RWNX_FULLMAC */
 
-	if (rwnx_hw->fwlog_en)
-		rwnx_fw_log_deinit(&rwnx_hw->debugfs.fw_log);
+	rwnx_fw_trace_deinit(&rwnx_hw->debugfs.fw_trace);
 
 	if (!rwnx_hw->debugfs.dir)
 		return;
 
 	rwnx_debugfs->unregistering = true;
+	flush_work(&rwnx_debugfs->helper_work);
 #ifdef CONFIG_RWNX_FULLMAC
 	flush_work(&rwnx_debugfs->rc_stat_work);
 #endif
 	debugfs_remove_recursive(rwnx_hw->debugfs.dir);
 	rwnx_hw->debugfs.dir = NULL;
 }
-
-#endif /* CONFIG_DEBUG_FS */
 

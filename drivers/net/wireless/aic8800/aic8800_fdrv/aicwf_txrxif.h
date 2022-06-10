@@ -120,7 +120,6 @@ struct aicwf_tx_priv {
 };
 
 
-#define DEFRAG_MAX_WAIT         40 //100
 #ifdef AICWF_RX_REORDER
 #define MAX_REORD_RXFRAME       250
 #define REORDER_UPDATE_TIME     50

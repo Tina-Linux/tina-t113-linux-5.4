@@ -128,11 +128,8 @@ static bool aw_spinand_cache_match_cache(struct aw_spinand_chip *chip,
 }
 
 static int aw_spinand_cahce_write_to_cache_do(struct aw_spinand_chip *chip,
-		void *buf, unsigned int len, unsigned int column,
-		struct aw_spinand_chip_request *req)
+		void *buf, unsigned int len, unsigned int column)
 {
-	struct aw_spinand_info *info = chip->info;
-	struct aw_spinand_phy_info *pinfo = info->phy_info;
 	unsigned char txbuf[3];
 	struct spi_message msg;
 	struct spi_transfer t[2] = {};
@@ -145,9 +142,6 @@ static int aw_spinand_cahce_write_to_cache_do(struct aw_spinand_chip *chip,
 		txbuf[0] = column ? SPI_NAND_RANDOM_PP : SPI_NAND_PP;
 	txbuf[1] = (column >> 8) & 0xFF;
 	txbuf[2] = column & 0xFF;
-	if ((pinfo->OperationOpt & SPINAND_TWO_PLANE_SELECT) &&
-				(req->block % 2 == 1))
-			txbuf[1] |= SPI_SELECT_ODDNUM_BLACK;
 	t[0].tx_buf = txbuf;
 	t[0].len = 3;
 	spi_message_add_tail(&t[0], &msg);
@@ -170,7 +164,7 @@ static int write_to_cache_half_page_twice(struct aw_spinand_chip *chip,
 	half_page_size = info->phy_page_size(chip) >> 1;
 	/* the first half page */
 	ret = aw_spinand_cahce_write_to_cache_do(chip, cache->databuf,
-			half_page_size, column, req);
+			half_page_size, column);
 	if (ret)
 		return ret;
 
@@ -178,8 +172,7 @@ static int write_to_cache_half_page_twice(struct aw_spinand_chip *chip,
 	column += half_page_size;
 	return aw_spinand_cahce_write_to_cache_do(chip,
 			cache->databuf + half_page_size,
-			half_page_size + info->phy_oob_size(chip),
-			column, req);
+			half_page_size + info->phy_oob_size(chip), column);
 }
 
 static int write_to_cache_whole_page_once(struct aw_spinand_chip *chip,
@@ -191,7 +184,7 @@ static int write_to_cache_whole_page_once(struct aw_spinand_chip *chip,
 	/* write the whole page */
 	return aw_spinand_cahce_write_to_cache_do(chip, cache->databuf,
 			info->phy_page_size(chip) + info->phy_oob_size(chip),
-			0, req);
+			0);
 }
 
 #if IS_ENABLED(CONFIG_AW_SPINAND_ENABLE_PHY_CRC16)
@@ -386,9 +379,6 @@ static int aw_spinand_cache_read_from_cache(struct aw_spinand_chip *chip,
 		txbuf[2] = column & 0xFF;
 		txbuf[3] = 0x00;
 		t[0].len = 4;
-		if ((pinfo->OperationOpt & SPINAND_TWO_PLANE_SELECT) &&
-				(req->block % 2 == 1))
-			txbuf[1] |= SPI_SELECT_ODDNUM_BLACK;
 	}
 
 	t[0].tx_buf = txbuf;

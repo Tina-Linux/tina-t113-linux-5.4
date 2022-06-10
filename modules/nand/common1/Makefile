@@ -56,12 +56,11 @@ ifneq ($(CONFIG_PSTORE_BLK),)
 nand-y += nfd/nand_panic.o
 endif
 nand-y += phy-nand/nand_boot.o
-#nand-y += phy-nand/nand-partition/build_nand_partition.o
-#nand-y += phy-nand/nand-partition/build_phy_partition.o
-#nand-y += phy-nand/nand-partition/nand_info_init.o
-#nand-y += phy-nand/nand-partition2/build_phy_partition_v2.o
-#nand-y += phy-nand/nand-partition2/nand_info_init_v2.o
-nand-y += phy-nand/nand-partition3/nand_partitions.o
+nand-y += phy-nand/nand-partition/build_nand_partition.o
+nand-y += phy-nand/nand-partition/build_phy_partition.o
+nand-y += phy-nand/nand-partition/nand_info_init.o
+nand-y += phy-nand/nand-partition2/build_phy_partition_v2.o
+nand-y += phy-nand/nand-partition2/nand_info_init_v2.o
 nand-y += phy-nand/nand_physic_interface.o
 nand-y += phy-nand/nand_secure_storage.o
 nand-y += phy-nand/version.o

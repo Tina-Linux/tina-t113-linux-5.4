@@ -781,14 +781,4 @@ config KEYBOARD_SUNXI
 	Say Y here to enable the keyboard, support 7 keys.
 	based on verify board.
 
-config KEYBOARD_TPKEY
-	tristate "softwinnner tpadc support"
-	default n
-	select INPUT_MATRIXKMAP
-	help
-		Say Y here to enable the keyboard, support 5 keys.
-
-		To compile this driver as a module, choose M here:
-		based on verify board.
-
 endif

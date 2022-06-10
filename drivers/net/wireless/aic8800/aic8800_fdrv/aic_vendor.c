@@ -10,22 +10,11 @@
 #include <net/netlink.h>
 #include "rwnx_version_gen.h"
 
-static struct wifi_ring_buffer_status ring_buffer[] = {
-	{
-		.name            = "aicwf_ring_buffer0",
-		.flags           = 0,
-		.ring_id         = 0,
-		.verbose_level   = 0,
-		.written_bytes   = 0,
-		.read_bytes      = 0,
-		.written_records = 0,
-	},
-};
+#define KEEP_ALIVE
 
-static struct wlan_driver_wake_reason_cnt_t wake_reason_cnt = {
-	.total_cmd_event_wake = 10,
-};
+#define GOOGLE_OUI     0x001A11
 
+#ifdef KEEP_ALIVE
 int aic_dev_start_mkeep_alive(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 			u8 mkeep_alive_id, u8 *ip_pkt, u16 ip_pkt_len, u8 *src_mac, u8 *dst_mac, u32 period_msec)
 {
@@ -54,6 +43,7 @@ int aic_dev_start_mkeep_alive(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif
 	return 0;
 }
 
+
 int aic_dev_stop_mkeep_alive(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif, u8 mkeep_alive_id)
 {
 	int  res = -1;
@@ -71,6 +61,7 @@ int aic_dev_stop_mkeep_alive(struct rwnx_hw *rwnx_hw, struct rwnx_vif *rwnx_vif,
 	res = 0;
 	return res;
 }
+
 
 static int aicwf_vendor_start_mkeep_alive(struct wiphy *wiphy, struct wireless_dev *wdev,
 	const void *data, int len)
@@ -100,19 +91,19 @@ static int aicwf_vendor_start_mkeep_alive(struct wiphy *wiphy, struct wireless_d
 		case MKEEP_ALIVE_ATTRIBUTE_IP_PKT_LEN:
 			ip_pkt_len = nla_get_u16(iter);
 			if (ip_pkt_len > MKEEP_ALIVE_IP_PKT_MAX) {
-				ret = -EINVAL;
+				ret = BADARG;
 				goto exit;
 			}
 			break;
 		case MKEEP_ALIVE_ATTRIBUTE_IP_PKT:
 			if (!ip_pkt_len) {
-				ret = -EINVAL;
+				ret = BADARG;
 				printk("ip packet length is 0\n");
 				goto exit;
 			}
 			ip_pkt = (u8 *)kzalloc(ip_pkt_len, kflags);
 			if (ip_pkt == NULL) {
-				ret = -ENOMEM;
+				ret = NOMEM;
 				printk("Failed to allocate mem for ip packet\n");
 				goto exit;
 			}
@@ -128,14 +119,14 @@ static int aicwf_vendor_start_mkeep_alive(struct wiphy *wiphy, struct wireless_d
 			period_msec = nla_get_u32(iter);
 			break;
 		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			ret = -EINVAL;
+			printk("Unknown type: %d\n", type);
+			ret = BADARG;
 			goto exit;
 		}
 	}
 
 	if (ip_pkt == NULL) {
-		ret = -EINVAL;
+		ret = BADARG;
 		printk("ip packet is NULL\n");
 		goto exit;
 	}
@@ -171,8 +162,8 @@ static int aicwf_vendor_stop_mkeep_alive(struct wiphy *wiphy, struct wireless_de
 			mkeep_alive_id = nla_get_u8(iter);
 			break;
 		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			ret = -EINVAL;
+			printk("Unknown type: %d\n", type);
+			ret = BADARG;
 			break;
 		}
 	}
@@ -184,6 +175,7 @@ static int aicwf_vendor_stop_mkeep_alive(struct wiphy *wiphy, struct wireless_de
 
 	return ret;
 }
+#endif /* KEEP_ALIVE */
 
 static int aicwf_vendor_get_ver(struct wiphy *wiphy, struct wireless_dev *wdev,
 	const void *data, int len)
@@ -199,7 +191,7 @@ static int aicwf_vendor_get_ver(struct wiphy *wiphy, struct wireless_dev *wdev,
 		type = nla_type(iter);
 		switch (type) {
 		case LOGGER_ATTRIBUTE_DRIVER_VER:
-			memcpy(version, RWNX_VERS_BANNER, sizeof(RWNX_VERS_BANNER));
+			memcpy(version, RWNX_VERS_BANNER, strlen(RWNX_VERS_BANNER));
 			payload = strlen(version);
 			attr = LOGGER_ATTRIBUTE_DRIVER_VER;
 			break;
@@ -209,13 +201,13 @@ static int aicwf_vendor_get_ver(struct wiphy *wiphy, struct wireless_dev *wdev,
 			attr = LOGGER_ATTRIBUTE_FW_VER;
 			break;
 		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			return -EINVAL;
+			printk("Unknown type: %d\n", type);
+			return BADARG;
 		}
 	}
 
 	if (attr < 0)
-		return -EINVAL;
+		return BADARG;
 
 	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, payload);
 
@@ -238,351 +230,7 @@ out_put_fail:
 	return -EMSGSIZE;
 }
 
-static int aicwf_vendor_subcmd_get_channel_list(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret = 0, rem, type;
-	const struct nlattr *iter;
-	struct sk_buff *reply;
-	int num_channels = 0;
-	int *channel_list = NULL;
-	int payload;
-	int i = 0;
-	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
-	struct ieee80211_supported_band *rwnx_band_2GHz = rwnx_hw->wiphy->bands[NL80211_BAND_2GHZ];
-	struct ieee80211_supported_band *rwnx_band_5GHz = rwnx_hw->wiphy->bands[NL80211_BAND_5GHZ];
-
-	num_channels += rwnx_band_2GHz->n_channels;
-	num_channels += (rwnx_hw->band_5g_support) ? rwnx_band_5GHz->n_channels : 0;
-
-	channel_list = (int *)kzalloc(sizeof(int) * num_channels, GFP_KERNEL);
-	if (!channel_list)
-		return -ENOMEM;
-
-	for (i = 0; i < rwnx_band_2GHz->n_channels; i++)
-		channel_list[i] = rwnx_band_2GHz->channels[i].center_freq;
-
-	for (; rwnx_hw->band_5g_support && i < num_channels; i++)
-		channel_list[i] = rwnx_band_5GHz->channels[i].center_freq;
-
-	payload = sizeof(num_channels) + sizeof(int) * num_channels + 4;
-
-	nla_for_each_attr(iter, data, len, rem) {
-		type = nla_type(iter);
-		switch (type) {
-		case GSCAN_ATTRIBUTE_BAND:
-			reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, payload);
-
-			if (!reply)
-				return -ENOMEM;
-
-			if (nla_put_u32(reply, GSCAN_ATTRIBUTE_NUM_CHANNELS, num_channels))
-				goto out_put_fail;
-
-			if (nla_put(reply, GSCAN_ATTRIBUTE_CHANNEL_LIST, sizeof(int) * num_channels, channel_list))
-				goto out_put_fail;
-
-			ret = cfg80211_vendor_cmd_reply(reply);
-			if (ret)
-				wiphy_err(wiphy, "%s reply cmd error\n", __func__);
-			break;
-		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			return -EINVAL;
-		}
-	}
-
-	kfree(channel_list);
-	return ret;
-
-out_put_fail:
-	kfree(channel_list);
-	kfree_skb(reply);
-	return -EMSGSIZE;
-}
-
-static int aicwf_vendor_subcmd_set_country_code(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret = 0, rem, type;
-	const struct nlattr *iter;
-
-	nla_for_each_attr(iter, data, len, rem) {
-		type = nla_type(iter);
-		switch (type) {
-		case ANDR_WIFI_ATTRIBUTE_COUNTRY:
-			printk("%s(%d), ANDR_WIFI_ATTRIBUTE_COUNTRY: %s\n", __func__, __LINE__, (char *)nla_data(iter));
-			break;
-		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			return -EINVAL;
-		}
-	}
-
-	/* TODO
-	 * Add handle in the future!
-	 */
-
-	return ret;
-}
-
-static int aicwf_vendor_logger_trigger_memory_dump(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	/* TODO
-	 * Add handle in the future!
-	 */
-	return 0;
-}
-
-static int aicwf_vendor_subcmd_get_feature_set(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret;
-	struct sk_buff *reply;
-	uint32_t feature = 0, payload;
-	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
-
-	payload = sizeof(feature);
-	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, payload);
-
-	if (!reply)
-		return -ENOMEM;
-
-	/* TODO
-	 * Add handle in the future!
-	 */
-	/*bit 1:Basic infrastructure mode*/
-	if (wiphy->interface_modes & BIT(NL80211_IFTYPE_STATION))
-		feature |= WIFI_FEATURE_INFRA;
-
-	/*bit 2:Support for 5 GHz Band*/
-	if (rwnx_hw->band_5g_support)
-		feature |= WIFI_FEATURE_INFRA_5G;
-
-	/*bit3:HOTSPOT is a supplicant feature, enable it by default*/
-	feature |= WIFI_FEATURE_HOTSPOT;
-
-	/*bit 4:P2P*/
-	if ((wiphy->interface_modes & BIT(NL80211_IFTYPE_P2P_CLIENT)) &&
-		(wiphy->interface_modes & BIT(NL80211_IFTYPE_P2P_GO)))
-		feature |= WIFI_FEATURE_P2P;
-
-	/*bit 5:soft AP feature supported*/
-	if (wiphy->interface_modes & BIT(NL80211_IFTYPE_AP))
-		feature |= WIFI_FEATURE_SOFT_AP;
-
-	/*bit 18:WiFi Logger*/
-	feature |= WIFI_FEATURE_LOGGER;
-
-	/*bit 21:WiFi mkeep_alive*/
-	feature |= WIFI_FEATURE_MKEEP_ALIVE;
-
-	if (nla_put_u32(reply, ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET, feature)) {
-		wiphy_err(wiphy, "%s put u32 error\n", __func__);
-		goto out_put_fail;
-	}
-
-	ret = cfg80211_vendor_cmd_reply(reply);
-	if (ret)
-		wiphy_err(wiphy, "%s reply cmd error\n", __func__);
-
-	return ret;
-
-out_put_fail:
-	kfree_skb(reply);
-	return -EMSGSIZE;
-}
-
-static int aicwf_vendor_logger_get_feature(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret;
-	struct sk_buff *reply;
-	uint32_t feature = 0, payload;
-
-	payload = sizeof(feature);
-	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, payload);
-
-	if (!reply)
-		return -ENOMEM;
-
-	feature |= WIFI_LOGGER_MEMORY_DUMP_SUPPORTED;
-	feature |= WIFI_LOGGER_CONNECT_EVENT_SUPPORTED;
-
-	/*vts will test wake reason state function*/
-	feature |= WIFI_LOGGER_WAKE_LOCK_SUPPORTED;
-
-	if (nla_put_u32(reply, ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET, feature)) {
-		wiphy_err(wiphy, "put skb u32 failed\n");
-		goto out_put_fail;
-	}
-
-	ret = cfg80211_vendor_cmd_reply(reply);
-	if (ret)
-		wiphy_err(wiphy, "reply cmd error\n");
-
-	return ret;
-
-out_put_fail:
-	kfree_skb(reply);
-	return -EMSGSIZE;
-}
-
-static int aicwf_vendor_logger_get_ring_status(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret;
-	struct sk_buff *reply;
-	uint32_t payload;
-	uint32_t ring_buffer_nums = sizeof(ring_buffer) / sizeof(ring_buffer[0]);
-
-	payload = sizeof(ring_buffer_nums) + sizeof(ring_buffer);
-	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, payload);
-
-	if (!reply)
-		return -ENOMEM;
-
-	if (nla_put_u32(reply, LOGGER_ATTRIBUTE_RING_NUM, ring_buffer_nums)) {
-		wiphy_err(wiphy, "put skb u32 failed\n");
-		goto out_put_fail;
-	}
-
-	if (nla_put(reply, LOGGER_ATTRIBUTE_RING_STATUS, sizeof(ring_buffer), ring_buffer)) {
-		wiphy_err(wiphy, "put skb failed\n");
-		goto out_put_fail;
-	}
-
-	ret = cfg80211_vendor_cmd_reply(reply);
-	if (ret)
-		wiphy_err(wiphy, "reply cmd error\n");
-
-	return ret;
-
-out_put_fail:
-	kfree_skb(reply);
-	return -EMSGSIZE;
-}
-
-static int aicwf_vendor_logger_start_logging(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret = 0, rem, type, intval, size, i;
-	const struct nlattr *iter;
-	struct wifi_ring_buffer_status rb;
-
-	nla_for_each_attr(iter, data, len, rem) {
-		type = nla_type(iter);
-		switch (type) {
-		case LOGGER_ATTRIBUTE_LOG_LEVEL:
-			rb.verbose_level = nla_get_u32(iter);
-			break;
-		case LOGGER_ATTRIBUTE_RING_FLAGS:
-			rb.flags = nla_get_u32(iter);
-			break;
-		case LOGGER_ATTRIBUTE_LOG_TIME_INTVAL:
-			intval = nla_get_u32(iter);
-			break;
-		case LOGGER_ATTRIBUTE_LOG_MIN_DATA_SIZE:
-			size = nla_get_u32(iter);
-			break;
-		case LOGGER_ATTRIBUTE_RING_NAME:
-			strcpy(rb.name, nla_data(iter));
-			break;
-		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			return -EINVAL;
-		}
-	}
-
-	ret = -EINVAL;
-	for (i = 0; i < sizeof(ring_buffer) / sizeof(ring_buffer[0]); i++) {
-		if (strcmp(rb.name, ring_buffer[i].name) == 0) {
-			ret = 0;
-			break;
-		}
-	}
-
-	/* TODO
-	 * Add handle in the future
-	 */
-
-	return ret;
-}
-
-static int aicwf_vendor_logger_get_ring_data(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret = 0, rem, type, i;
-	const struct nlattr *iter;
-	struct wifi_ring_buffer_status rb;
-
-	nla_for_each_attr(iter, data, len, rem) {
-		type = nla_type(iter);
-		switch (type) {
-		case LOGGER_ATTRIBUTE_RING_NAME:
-			strcpy(rb.name, nla_data(iter));
-			break;
-		default:
-			pr_err("%s(%d), Unknown type: %d\n", __func__, __LINE__, type);
-			return -EINVAL;
-		}
-	}
-
-	ret = -EINVAL;
-	for (i = 0; i < sizeof(ring_buffer) / sizeof(ring_buffer[0]); i++) {
-		if (strcmp(rb.name, ring_buffer[i].name) == 0) {
-			ret = 0;
-			break;
-		}
-	}
-
-	/* TODO
-	 * Add handle in the future
-	 */
-
-	return ret;
-}
-
-static int aicwf_vendor_logger_get_wake_reason_stats(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	int ret;
-	struct sk_buff *reply;
-	uint32_t payload;
-
-	payload = sizeof(wake_reason_cnt.total_cmd_event_wake);
-	reply = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, payload);
-
-	if (!reply)
-		return -ENOMEM;
-
-	/* TODO
-	 * Add handle in the future
-	 */
-	if (nla_put_u32(reply, WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT, wake_reason_cnt.total_cmd_event_wake))
-		goto out_put_fail;
-
-	ret = cfg80211_vendor_cmd_reply(reply);
-	if (ret)
-		wiphy_err(wiphy, "reply cmd error\n");
-
-	return ret;
-
-out_put_fail:
-	kfree_skb(reply);
-	return -EMSGSIZE;
-}
-
-static int aicwf_vendor_apf_subcmd_get_capabilities(struct wiphy *wiphy, struct wireless_dev *wdev,
-	const void *data, int len)
-{
-	/* TODO
-	 * Add handle in the future
-	 */
-	return 0;
-}
-
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
 static const struct nla_policy
 aicwf_cfg80211_mkeep_alive_policy[MKEEP_ALIVE_ATTRIBUTE_MAX+1] = {
 	[0] = {.type = NLA_UNSPEC },
@@ -595,29 +243,13 @@ aicwf_cfg80211_mkeep_alive_policy[MKEEP_ALIVE_ATTRIBUTE_MAX+1] = {
 							.len  = ETH_ALEN },
 	[MKEEP_ALIVE_ATTRIBUTE_PERIOD_MSEC]	= { .type = NLA_U32 },
 };
+#endif
 
 static const struct nla_policy
-aicwf_cfg80211_logger_policy[LOGGER_ATTRIBUTE_MAX + 1] = {
+aicwf_cfg80211_debug_policy[LOGGER_ATTRIBUTE_MAX + 1] = {
 	[0] = {.type = NLA_UNSPEC },
-	[LOGGER_ATTRIBUTE_DRIVER_VER] = { .type = NLA_BINARY },
-	[LOGGER_ATTRIBUTE_FW_VER] = { .type = NLA_BINARY },
-	[LOGGER_ATTRIBUTE_LOG_LEVEL] = { .type = NLA_U32 },
-	[LOGGER_ATTRIBUTE_RING_FLAGS] = { .type = NLA_U32 },
-	[LOGGER_ATTRIBUTE_LOG_TIME_INTVAL] = { .type = NLA_U32 },
-	[LOGGER_ATTRIBUTE_LOG_MIN_DATA_SIZE] = { .type = NLA_U32 },
-	[LOGGER_ATTRIBUTE_RING_NAME] = { .type = NLA_STRING },
-};
-
-static const struct nla_policy
-aicwf_cfg80211_subcmd_policy[GSCAN_ATTRIBUTE_MAX + 1] = {
-	[0] = {.type = NLA_UNSPEC },
-	[GSCAN_ATTRIBUTE_BAND] = { .type = NLA_U32 },
-};
-
-static const struct nla_policy
-aicwf_cfg80211_andr_wifi_policy[ANDR_WIFI_ATTRIBUTE_MAX + 1] = {
-	[0] = {.type = NLA_UNSPEC },
-	[ANDR_WIFI_ATTRIBUTE_COUNTRY] = { .type = NLA_STRING },
+	[LOGGER_ATTRIBUTE_DRIVER_VER] = { .type = NLA_U32 },
+	[LOGGER_ATTRIBUTE_FW_VER] = { .type = NLA_U32 },
 };
 
 static int aicwf_dump_interface(struct wiphy *wiphy,
@@ -628,7 +260,9 @@ static int aicwf_dump_interface(struct wiphy *wiphy,
 	return 0;
 }
 
+
 const struct wiphy_vendor_command aicwf_vendor_cmd[] = {
+#ifdef KEEP_ALIVE
 	{
 		{
 			.vendor_id = GOOGLE_OUI,
@@ -637,7 +271,7 @@ const struct wiphy_vendor_command aicwf_vendor_cmd[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = aicwf_vendor_start_mkeep_alive,
 		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
 		.policy = aicwf_cfg80211_mkeep_alive_policy,
 		.maxattr = MKEEP_ALIVE_ATTRIBUTE_MAX
 #endif
@@ -650,11 +284,12 @@ const struct wiphy_vendor_command aicwf_vendor_cmd[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = aicwf_vendor_stop_mkeep_alive,
 		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
 		.policy = aicwf_cfg80211_mkeep_alive_policy,
 		.maxattr = MKEEP_ALIVE_ATTRIBUTE_MAX
 #endif
 	},
+#endif
 	{
 		{
 			.vendor_id = GOOGLE_OUI,
@@ -663,133 +298,9 @@ const struct wiphy_vendor_command aicwf_vendor_cmd[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
 		.doit = aicwf_vendor_get_ver,
 		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = aicwf_cfg80211_logger_policy,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+		.policy = aicwf_cfg80211_debug_policy,
 		.maxattr = LOGGER_ATTRIBUTE_MAX
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = GSCAN_SUBCMD_GET_CHANNEL_LIST
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_subcmd_get_channel_list,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = aicwf_cfg80211_subcmd_policy,
-		.maxattr = GSCAN_ATTRIBUTE_MAX
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = WIFI_SUBCMD_SET_COUNTRY_CODE
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV | WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_subcmd_set_country_code,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = aicwf_cfg80211_andr_wifi_policy,
-		.maxattr = ANDR_WIFI_ATTRIBUTE_MAX
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = LOGGER_TRIGGER_MEM_DUMP
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_logger_trigger_memory_dump,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = VENDOR_CMD_RAW_DATA,
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = WIFI_SUBCMD_GET_FEATURE_SET
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_subcmd_get_feature_set,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = VENDOR_CMD_RAW_DATA,
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = LOGGER_GET_FEATURE
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_logger_get_feature,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = VENDOR_CMD_RAW_DATA,
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = LOGGER_GET_RING_STATUS
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_logger_get_ring_status,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = VENDOR_CMD_RAW_DATA,
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = LOGGER_START_LOGGING
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_logger_start_logging,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = aicwf_cfg80211_logger_policy,
-		.maxattr = LOGGER_ATTRIBUTE_MAX
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = LOGGER_GET_RING_DATA
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_logger_get_ring_data,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = aicwf_cfg80211_logger_policy,
-		.maxattr = LOGGER_ATTRIBUTE_MAX
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = LOGGER_GET_WAKE_REASON_STATS
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_logger_get_wake_reason_stats,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = VENDOR_CMD_RAW_DATA,
-#endif
-	},
-	{
-		{
-			.vendor_id = GOOGLE_OUI,
-			.subcmd = APF_SUBCMD_GET_CAPABILITIES
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |  WIPHY_VENDOR_CMD_NEED_NETDEV,
-		.doit = aicwf_vendor_apf_subcmd_get_capabilities,
-		.dumpit = aicwf_dump_interface,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 3, 0)
-		.policy = VENDOR_CMD_RAW_DATA,
 #endif
 	},
 };

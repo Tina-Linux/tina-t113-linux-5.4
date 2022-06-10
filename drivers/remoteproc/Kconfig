@@ -214,6 +214,13 @@ config STM32_RPROC
 
 	  This can be either built-in or a loadable module.
 
+config SUNXI_RPROC
+	tristate "SUNXI remoteproc support"
+	depends on ARCH_SUNXI
+	depends on REMOTEPROC
+	help
+	  This can be either built-in or a loadable module.
+
 endif # REMOTEPROC
 
 endmenu

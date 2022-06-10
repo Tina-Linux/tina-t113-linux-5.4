@@ -72,22 +72,6 @@ static unsigned char keypad_mapindex[128] = {
 	7, 7, 7, 7, 7, 7, 7			/* key 8, 50-63 */
 };
 
-static inline void sunxi_gpadc_save_regs(struct sunxi_gpadc *sunxi_gpadc)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_gpadc_regs_offset); i++)
-		sunxi_gpadc->regs_backup[i] = readl(sunxi_gpadc->reg_base + sunxi_gpadc_regs_offset[i]);
-}
-
-static inline void sunxi_gpadc_restore_regs(struct sunxi_gpadc *sunxi_gpadc)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_gpadc_regs_offset); i++)
-		writel(sunxi_gpadc->regs_backup[i], sunxi_gpadc->reg_base + sunxi_gpadc_regs_offset[i]);
-}
-
 #ifdef CONFIG_ARCH_SUN8IW18
 static u32 sunxi_gpadc_check_vin(void)
 {
@@ -2062,13 +2046,11 @@ static int sunxi_gpadc_suspend(struct device *dev)
 	flush_delayed_work(&sunxi_gpadc->gpadc_work);
 	cancel_delayed_work_sync(&sunxi_gpadc->gpadc_work);
 #endif
+	sunxi_gpadc_enable(sunxi_gpadc->reg_base, false);
+
 	disable_irq_nosync(sunxi_gpadc->irq_num);
 
-	sunxi_gpadc_save_regs(sunxi_gpadc);
-
 	clk_disable_unprepare(sunxi_gpadc->bus_clk);
-
-	reset_control_assert(sunxi_gpadc->reset);
 
 	return 0;
 }
@@ -2078,20 +2060,14 @@ static int sunxi_gpadc_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sunxi_gpadc *sunxi_gpadc = platform_get_drvdata(pdev);
 
-	reset_control_deassert(sunxi_gpadc->reset);
-
-	if (clk_prepare_enable(sunxi_gpadc->bus_clk)) {
-		pr_err("[gpadc%d] enable clock failed!\n", sunxi_gpadc->bus_num);
-		return 0;
-	}
-
-	sunxi_gpadc_restore_regs(sunxi_gpadc);
-
-	enable_irq(sunxi_gpadc->irq_num);
-
 #ifdef USE_DATA_SCAN
 	schedule_delayed_work(&sunxi_gpadc->gpadc_work, sunxi_gpadc->interval);
 #endif
+	clk_prepare_enable(sunxi_gpadc->bus_clk);
+
+	enable_irq(sunxi_gpadc->irq_num);
+
+	sunxi_gpadc_enable(sunxi_gpadc->reg_base, true);
 
 	return 0;
 }

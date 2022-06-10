@@ -119,8 +119,10 @@ static void sunxi_timerout_handle(struct work_struct *work)
 	host = container_of(work, struct sunxi_mmc_host, sunxi_timerout_work.work);
 	spin_lock_irqsave(&host->lock, flags);
 	dev_err(mmc_dev(host->mmc), "timer timout\n");
-	if (host->mrq && !host->manual_stop_mrq
-	     && !host->mrq_busy && !host->mrq_retry){
+	queue_delayed_work(system_wq, \
+			&host->sunxi_timerout_work, \
+			SUNXI_TRANS_TIMEOUT);
+	if (host->mrq && !host->manual_stop_mrq && !host->mrq_busy && !host->mrq_retry) {
 		rint = mmc_readl(host, REG_RINTR);
 		idma_int = mmc_readl(host, REG_IDST);
 		if ((rint & (SDXC_INTERRUPT_DONE_BIT | SDXC_INTERRUPT_ERROR_BIT))\
@@ -1085,8 +1087,6 @@ static irqreturn_t sunxi_mmc_handle_do_bottom_half(void *dev_id)
 		struct mmc_command *cmd = NULL;
 		struct mmc_data *data = mrq_retry->data;
 		cmd = (mrq_retry->sbc && !host->sunxi_mmc_opacmd23) ? mrq_retry->sbc : mrq_retry->cmd;
-		if (host->ctl_spec_cap & SUNXI_SC_EN_TIMEOUT_DETECT)
-			cancel_delayed_work_sync(&host->sunxi_timerout_work);
 
 		dev_info(mmc_dev(host->mmc), "retry:start\n");
 
@@ -1204,10 +1204,6 @@ static irqreturn_t sunxi_mmc_handle_do_bottom_half(void *dev_id)
 		host->wait_dma = wait_dma;
 		host->retry_cnt++;
 		host->errno_retry = 0;
-		if (host->ctl_spec_cap & SUNXI_SC_EN_TIMEOUT_DETECT)
-			queue_delayed_work(system_wq, \
-					&host->sunxi_timerout_work, \
-					SUNXI_TRANS_TIMEOUT);
 		sunxi_mmc_exe_cmd(host, cmd, cmd_val, imask);
 		dev_info(mmc_dev(host->mmc), "*****retry:re-send cmd*****\n");
 /******************************************************/
@@ -1940,8 +1936,10 @@ static void sunxi_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	sunxi_mmc_parse_cmd(mmc, cmd, &cmd_val, &imask, &wait_dma);
 
-	if (host->ctl_spec_cap & SUNXI_SC_EN_TIMEOUT_DETECT)
-		cancel_delayed_work_sync(&host->sunxi_timerout_work);
+/*
+ *if (host->ctl_spec_cap & SUNXI_SC_EN_TIMEOUT_DETECT)
+ *	cancel_delayed_work_sync(&host->sunxi_timerout_work);
+*/
 
 	dev_dbg(mmc_dev(mmc), "cmd %d(%08x) arg %x ie 0x%08x len %d\n",
 		cmd_val & 0x3f, cmd_val, cmd->arg, imask,

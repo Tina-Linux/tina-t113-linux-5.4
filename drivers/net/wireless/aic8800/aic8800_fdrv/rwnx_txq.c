@@ -257,6 +257,7 @@ void rwnx_txq_sta_init(struct rwnx_hw *rwnx_hw, struct rwnx_sta *rwnx_sta,
 	}
 
 #endif /* CONFIG_RWNX_FULLMAC*/
+	rwnx_ipc_sta_buffer_init(rwnx_hw, rwnx_sta->sta_idx);
 }
 
 /**
@@ -658,6 +659,8 @@ void rwnx_txq_vif_stop(struct rwnx_vif *rwnx_vif, u16 reason,
 {
 	struct rwnx_txq *txq;
 
+	RWNX_DBG(RWNX_FN_ENTRY_STR);
+
 	trace_txq_vif_stop(rwnx_vif->vif_index);
 	spin_lock_bh(&rwnx_hw->tx_lock);
 
@@ -769,6 +772,11 @@ int rwnx_txq_queue_skb(struct sk_buff *skb, struct rwnx_txq *txq,
 	if (!retry) {
 		/* add buffer in the sk_list */
 		skb_queue_tail(&txq->sk_list, skb);
+#ifdef CONFIG_RWNX_FULLMAC
+		// to update for SOFTMAC
+		rwnx_ipc_sta_buffer(rwnx_hw, txq->sta, txq->tid,
+							((struct rwnx_txhdr *)skb->data)->sw_hdr->frame_len);
+#endif
 	} else {
 		if (txq->last_retry_skb)
 			rwnx_skb_append(txq->last_retry_skb, skb, &txq->sk_list);

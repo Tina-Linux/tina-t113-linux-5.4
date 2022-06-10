@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NAND_BOOT_H__
 #define __NAND_BOOT_H__
-#if 0
-#include "nand-partition3/sunxi_nand_partitions.h"
+#include "nand-partition/phy.h"
 
 #define TOC_MAIN_INFO_MAGIC 0x89119800
 #define PHY_INFO_SIZE 0x8000
@@ -29,8 +28,6 @@
 #define UBOOT_MAX_BLOCK_NUM 50
 
 #define PHYSIC_RECV_BLOCK 6
-
-typedef unsigned long long uint64_t;
 
 struct _uboot_info {
 	unsigned int sys_mode;
@@ -82,8 +79,6 @@ struct _boot_info {
 	_FACTORY_BLOCK factory_block;    //2k               offset 7.5k
 	//_UBOOT_INFO uboot_info;             //0.25K
 	_NAND_SPECIAL_INFO nand_special_info; //1k               offset 9.5k
-	uint64_t append_new_magic; /*parts3p0 -> 0x7061727473337030*/
-	struct nand_partitions parts;
 };
 
 extern int nand_secure_storage_block_bak;
@@ -131,5 +126,5 @@ int print_physic_info(struct _boot_info *info);
 int physic_info_add_to_uboot_tail(unsigned int *buf_dst, unsigned int uboot_size);
 /*unsigned int is_uboot_block(unsigned int block, char *uboot_buf, unsigned int *pages_offset);*/
 extern __u32 get_storage_type(void);
-#endif
+
 #endif /*NAND_BOOT_H*/

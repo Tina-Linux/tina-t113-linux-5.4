@@ -18,16 +18,28 @@
 #include <linux/reset.h>
 
 struct sunxi_rtc_data {
+	/* 0: date is represent by YY-MM-DD and HH-MM-SS in hardware */
+	/* 1: date is represent by DAY and HH-MM-SS in hardware */
+	/* 2: date is represent by SECOND in hardware */
+	u32 date_type;
+
+	/* 0: alarm is represent by YY-MM-DD and HH-MM-SS in hardware */
+	/* 1: alarm is represent by DAY and HH-MM-SS in hardware */
+	/* 2: alarm is represent by SECOND in hardware */
+	u32 alarm_type;
+
 	u32 min_year;	/* Minimal real year allowed by hardware. eg: 1970. */
-			/* For this IP, min_year can be set to any value that >= 1970, */
+			/* When date_type==1, min_year can be set to any value that >= 1970, */
 			/* for the valid value of (struct rtc_time).tm_year starts from 70 with an offset 1900. */
 			/* See rtc_valid_tm() in drivers/rtc/lib.c */
 	u32 max_year;	/* Maximum real year allowed by hardware. Can be caculated by HW_YEAR_MAX(min_year) */
-	u32 year_mask;	/* bit mask  of YEAR field */
-	u32 year_shift;	/* bit shift of YEAR field */
-	u32 leap_shift;	/* bit shift of LEAP-YEAR field */
-	u32 gpr_offset; /* Offset to General-Purpose-Register */
-	u32 gpr_len;    /* Number of General-Purpose-Register */
+
+	/* Only Valid when "date_type == 0" */
+	u32 year_mask;	/* mask for the year field */
+	u32 year_shift;	/* bit shift to get the year */
+	u32 leap_shift;	/* bit shift to get the leap year */
+	u32 gpr_offset; /* General Purpose register's offset */
+	u32 gpr_len;    /* The number of General Purpose register */
 };
 
 struct sunxi_rtc_dev {

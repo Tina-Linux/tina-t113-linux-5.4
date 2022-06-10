@@ -15,7 +15,6 @@
 #include "de/bsp_display.h"
 #include "de/disp_display.h"
 #include "de/disp_manager.h"
-#include "de/lcd_debug.h"
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #include <linux/earlysuspend.h>
 #endif
@@ -300,7 +299,6 @@ extern s32 disp_unregister_standby_func(int (*suspend) (void),
 extern s32 composer_init(struct disp_drv_info *psg_disp_drv);
 extern unsigned int composer_dump(char *buf);
 extern s32 disp_tv_register(struct disp_tv_func *func);
-extern s32 disp_set_hdmi_detect(bool hpd);
 s32 disp_set_edp_func(struct disp_tv_func *func);
 
 extern struct disp_drv_info g_disp_drv;
@@ -314,7 +312,6 @@ extern unsigned long fb_get_address_info(u32 fb_id, u32 phy_virt_flag);
 extern s32 fb_exit(void);
 extern int lcd_init(void);
 
-s32 disp_set_hdmi_func(struct disp_device_func *func);
 s32 disp_set_vdpo_func(struct disp_tv_func *func);
 s32 sunxi_get_fb_addr_para(struct __fb_addr_para *fb_addr_para);
 s32 fb_draw_gray_pictures(char *base, u32 width, u32 height,

@@ -342,6 +342,8 @@ struct DHCPInfo {
 	u8 options[308]; /* 312 - cookie */
 };
 
+u8 rwnx_unsup_rx_vec_ind(void *pthis, void *hostid);
+u8 rwnx_rxdataind(void *pthis, void *hostid);
 u8 rwnx_rxdataind_aicwf(struct rwnx_hw *rwnx_hw, void *hostid, void *rx_priv);
 int aicwf_process_rxframes(struct aicwf_rx_priv *rx_priv);
 

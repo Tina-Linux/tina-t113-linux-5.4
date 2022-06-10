@@ -14,40 +14,22 @@
 
 static struct platform_device *aicbsp_pdev;
 
-const struct aicbsp_firmware *aicbsp_firmware_list = fw_u02;
-
-const struct aicbsp_firmware fw_u02[] = {
+const struct aicbsp_firmware aicbsp_firmware_list[] = {
 	[AICBSP_CPMODE_WORK] = {
-		.desc          = "normal work mode(sdio u02)",
+		.desc          = "normal work mode",
 		.bt_adid       = "fw_adid.bin",
 		.bt_patch      = "fw_patch.bin",
 		.bt_table      = "fw_patch_table.bin",
+		.bt_patch_test = NULL,
 		.wl_fw         = "fmacfw.bin"
 	},
 
 	[AICBSP_CPMODE_TEST] = {
-		.desc          = "rf test mode(sdio u02)",
+		.desc          = "rf test mode",
 		.bt_adid       = "fw_adid.bin",
 		.bt_patch      = "fw_patch.bin",
 		.bt_table      = "fw_patch_table.bin",
-		.wl_fw         = "fmacfw_rf.bin"
-	},
-};
-
-const struct aicbsp_firmware fw_u03[] = {
-	[AICBSP_CPMODE_WORK] = {
-		.desc          = "normal work mode(sdio u03/u04)",
-		.bt_adid       = "fw_adid_u03.bin",
-		.bt_patch      = "fw_patch_u03.bin",
-		.bt_table      = "fw_patch_table_u03.bin",
-		.wl_fw         = "fmacfw.bin"
-	},
-
-	[AICBSP_CPMODE_TEST] = {
-		.desc          = "rf test mode(sdio u03/u04)",
-		.bt_adid       = "fw_adid_u03.bin",
-		.bt_patch      = "fw_patch_u03.bin",
-		.bt_table      = "fw_patch_table_u03.bin",
+		.bt_patch_test = "fw_patch_test.bin",
 		.wl_fw         = "fmacfw_rf.bin"
 	},
 };
@@ -77,7 +59,7 @@ static ssize_t cpmode_show(struct device *dev,
 
 	count += sprintf(&buf[count], "Support mode value:\n");
 
-	for (i = 0; i < AICBSP_CPMODE_MAX; i++) {
+	for (i = 0; i < sizeof(aicbsp_firmware_list) / sizeof(aicbsp_firmware_list[0]); i++) {
 		if (aicbsp_firmware_list[i].desc)
 			count += sprintf(&buf[count], " %2d: %s\n", i, aicbsp_firmware_list[i].desc);
 	}
@@ -86,6 +68,7 @@ static ssize_t cpmode_show(struct device *dev,
 	count += sprintf(&buf[count], "  BT ADID : %s\n", aicbsp_firmware_list[aicbsp_info.cpmode].bt_adid);
 	count += sprintf(&buf[count], "  BT PATCH: %s\n", aicbsp_firmware_list[aicbsp_info.cpmode].bt_patch);
 	count += sprintf(&buf[count], "  BT TABLE: %s\n", aicbsp_firmware_list[aicbsp_info.cpmode].bt_table);
+	count += sprintf(&buf[count], "  BT TEST : %s\n", aicbsp_firmware_list[aicbsp_info.cpmode].bt_patch_test);
 	count += sprintf(&buf[count], "  WIFI FW : %s\n", aicbsp_firmware_list[aicbsp_info.cpmode].wl_fw);
 	return count;
 }
@@ -94,12 +77,14 @@ static ssize_t cpmode_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
 	unsigned long val;
+	uint32_t max;
 	int err = kstrtoul(buf, 0, &val);
 	if (err)
 		return err;
 
-	if (val >= AICBSP_CPMODE_MAX) {
-		pr_err("mode value must less than %d\n", AICBSP_CPMODE_MAX);
+	max = sizeof(aicbsp_firmware_list) / sizeof(aicbsp_firmware_list[0]);
+	if (val >= max) {
+		pr_err("mode value must less than %d\n", max);
 		return -EINVAL;
 	}
 
@@ -113,12 +98,6 @@ static ssize_t hwinfo_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	ssize_t count = 0;
-
-	count += sprintf(&buf[count], "chip hw rev: ");
-	if (aicbsp_info.hwinfo_r < 0)
-		count += sprintf(&buf[count], "-1(not avalible)\n");
-	else
-		count += sprintf(&buf[count], "0x%02X\n", aicbsp_info.chip_rev);
 
 	count += sprintf(&buf[count], "hwinfo read: ");
 	if (aicbsp_info.hwinfo_r < 0)
@@ -154,50 +133,15 @@ static ssize_t hwinfo_store(struct device *dev,
 	return count;
 }
 
-static ssize_t fwdebug_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	ssize_t count = 0;
-
-	count += sprintf(&buf[count], "fw log status: %s\n",
-			aicbsp_info.fwlog_en ? "on" : "off");
-
-	return count;
-}
-
-static ssize_t fwdebug_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	long val;
-	int err = kstrtol(buf, 0, &val);
-
-	if (err) {
-		pr_err("invalid input\n");
-		return err;
-	}
-
-	if (val > 1 || val < 0) {
-		pr_err("must be 0 or 1\n");
-		return -EINVAL;
-	}
-
-	aicbsp_info.fwlog_en = val;
-	return count;
-}
-
 static DEVICE_ATTR(cpmode, S_IRUGO | S_IWUSR,
 		cpmode_show, cpmode_store);
 
 static DEVICE_ATTR(hwinfo, S_IRUGO | S_IWUSR,
 		hwinfo_show, hwinfo_store);
 
-static DEVICE_ATTR(fwdebug, S_IRUGO | S_IWUSR,
-		fwdebug_show, fwdebug_store);
-
 static struct attribute *aicbsp_attributes[] = {
 	&dev_attr_cpmode.attr,
 	&dev_attr_hwinfo.attr,
-	&dev_attr_fwdebug.attr,
 	NULL,
 };
 

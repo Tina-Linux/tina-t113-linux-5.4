@@ -13,7 +13,6 @@ snd-soc-sunxi-dummy-cpudai-objs := sunxi-dummy-cpudai.o
 snd-soc-sunxi-spdif-objs := sunxi-spdif.o
 snd-soc-sunxi-dmic-objs := sunxi-dmic.o
 snd-soc-sunxi-daudio-objs := sunxi-daudio.o
-snd-soc-sunxi-hdmi-objs := sunxi-hdmi.o
 
 obj-$(CONFIG_SND_SUNXI_SOC) += snd-soc-sunxi.o
 
@@ -31,9 +30,6 @@ obj-$(CONFIG_SND_SUNXI_SOC_DMIC) += snd-soc-sunxi-dmic.o
 
 # SUNXI I2S Support
 obj-$(CONFIG_SND_SUNXI_SOC_DAUDIO) += snd-soc-sunxi-daudio.o
-
-# SUNXI HDMIAUDIO Support
-obj-$(CONFIG_SND_SUNXI_SOC_SUNXI_HDMIAUDIO) += snd-soc-sunxi-hdmi.o
 
 # SUNXI Sun50iw10 Codec Support
 obj-$(CONFIG_SND_SUN50IW10_CODEC) += sun50iw10-codec.o

@@ -34,7 +34,7 @@ int rwnx_send_bcn_change(struct rwnx_hw *rwnx_hw, u8 vif_idx, u32 bcn_addr,
 int rwnx_send_tim_update(struct rwnx_hw *rwnx_hw, u8 vif_idx, u16 aid,
 						 u8 tx_status);
 int rwnx_send_roc(struct rwnx_hw *rwnx_hw, struct rwnx_vif *vif,
-				  struct ieee80211_channel *chan, unsigned int duration, struct mm_remain_on_channel_cfm *roc_cfm);
+				  struct ieee80211_channel *chan, unsigned int duration);
 int rwnx_send_cancel_roc(struct rwnx_hw *rwnx_hw);
 int rwnx_send_set_power(struct rwnx_hw *rwnx_hw,  u8 vif_idx, s8 pwr,
 						struct mm_set_power_cfm *cfm);
@@ -157,9 +157,8 @@ int rwnx_send_dbg_start_app_req(struct rwnx_hw *rwnx_hw, u32 boot_addr,
 								u32 boot_type);
 int rwnx_send_cfg_rssi_req(struct rwnx_hw *rwnx_hw, u8 vif_index, int rssi_thold, u32 rssi_hyst);
 int rwnx_send_coex_req(struct rwnx_hw *rwnx_hw, u8_l disable_coexnull, u8_l enable_nullcts);
-int rwnx_send_get_sta_info_req(struct rwnx_hw *rwnx_hw, u8_l sta_idx, struct mm_get_sta_info_cfm *cfm);
-int rwnx_send_set_stack_start_req(struct rwnx_hw *rwnx_hw, u8_l on, u8_l efuse_valid, u8_l set_vendor_info,
-					u8_l fwtrace_redir_en, struct mm_set_stack_start_cfm *cfm);
+int rwnx_send_get_sta_txinfo_req(struct rwnx_hw *rwnx_hw, u8_l sta_idx, struct mm_get_sta_txinfo_cfm *cfm);
+int rwnx_send_set_stack_start_req(struct rwnx_hw *rwnx_hw, u8_l on, u8_l efuse_valid, u8_l set_vendor_info, struct mm_set_stack_start_cfm *cfm);
 
 int rwnx_send_txpwr_idx_req(struct rwnx_hw *rwnx_hw);
 int rwnx_send_txpwr_ofst_req(struct rwnx_hw *rwnx_hw);

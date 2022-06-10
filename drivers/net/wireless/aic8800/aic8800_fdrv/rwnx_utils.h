@@ -121,11 +121,90 @@ struct rwnx_ipc_skb_elem {
  * @idx: Index of the last pushed skb.(Use to find the next free entry quicker)
  *
  * Note: contrary to softmac version, dma_addr are stored inside skb->cb.
+ * (cf &struct rwnx_skb_cb)
  */
 struct rwnx_ipc_rxbuf_elems {
 	struct sk_buff *skb[RWNX_RXBUFF_MAX];
 	int idx;
 };
 
+/**
+ * struct rwnx_skb_cb - Control Buffer structure for RX buffer
+ *
+ * @dma_addr: DMA address of the data buffer
+ * @pattern: Known pattern (used to check pointer on skb)
+ * @idx: Index in &struct rwnx_hw.rxbuff_table that contains address of this
+ * buffer
+ */
+struct rwnx_skb_cb {
+	dma_addr_t dma_addr;
+	uint32_t pattern;
+	uint32_t idx;
+};
+
+#define RWNX_RXBUFF_DMA_ADDR_SET(skbuff, addr)          \
+	(((struct rwnx_skb_cb *)(skbuff->cb))->dma_addr = addr)
+#define RWNX_RXBUFF_DMA_ADDR_GET(skbuff)                \
+	(((struct rwnx_skb_cb *)(skbuff->cb))->dma_addr)
+
+#define RWNX_RXBUFF_PATTERN_SET(skbuff, pat)                \
+	(((struct rwnx_skb_cb *)(skbuff->cb))->pattern = pat)
+#define RWNX_RXBUFF_PATTERN_GET(skbuff)         \
+	(((struct rwnx_skb_cb *)(skbuff->cb))->pattern)
+
+#define RWNX_RXBUFF_IDX_SET(skbuff, val)                \
+	(((struct rwnx_skb_cb *)(skbuff->cb))->idx = val)
+#define RWNX_RXBUFF_IDX_GET(skbuff)             \
+	(((struct rwnx_skb_cb *)(skbuff->cb))->idx)
+
+#define RWNX_RXBUFF_VALID_IDX(idx) ((idx) < RWNX_RXBUFF_MAX)
+
+/* Used to ensure that hostid set to fw is never 0 */
+#define RWNX_RXBUFF_IDX_TO_HOSTID(idx) ((idx) + 1)
+#define RWNX_RXBUFF_HOSTID_TO_IDX(hostid) ((hostid) - 1)
+
 #endif /* CONFIG_RWNX_FULLMAC */
+
+
+#ifdef CONFIG_RWNX_FULLMAC
+int rwnx_ipc_rxbuf_elem_allocs(struct rwnx_hw *rwnx_hw);
+void rwnx_ipc_rxbuf_elem_pull(struct rwnx_hw *rwnx_hw, struct sk_buff *skb);
+void rwnx_ipc_rxbuf_elem_sync(struct rwnx_hw *rwnx_hw, struct sk_buff *skb,
+							  int len);
+void rwnx_ipc_rxdesc_elem_repush(struct rwnx_hw *rwnx_hw,
+								 struct rwnx_ipc_elem *elem);
+void rwnx_ipc_rxbuf_elem_repush(struct rwnx_hw *rwnx_hw,
+					struct sk_buff *skb);
+#endif /* CONFIG_RWNX_FULLMAC */
+
+void rwnx_ipc_msg_push(struct rwnx_hw *rwnx_hw, void *msg_buf, uint16_t len);
+void rwnx_ipc_txdesc_push(struct rwnx_hw *rwnx_hw, void *tx_desc,
+						  void *hostid, int hw_queue, int user);
+
+void *rwnx_ipc_fw_trace_desc_get(struct rwnx_hw *rwnx_hw);
+
+int rwnx_ipc_rxbuf_init(struct rwnx_hw *rwnx_hw, uint32_t rx_bufsz);
+int rwnx_ipc_init(struct rwnx_hw *rwnx_hw, u8 *shared_ram);
+void rwnx_ipc_deinit(struct rwnx_hw *rwnx_hw);
+void rwnx_ipc_start(struct rwnx_hw *rwnx_hw);
+void rwnx_ipc_stop(struct rwnx_hw *rwnx_hw);
+void rwnx_ipc_tx_drain(struct rwnx_hw *rwnx_hw);
+bool rwnx_ipc_tx_pending(struct rwnx_hw *rwnx_hw);
+
+struct ipc_host_env_tag;
+int rwnx_ipc_elem_var_allocs(struct rwnx_hw *rwnx_hw,
+							 struct rwnx_ipc_elem_var *elem, size_t elem_size,
+							 enum dma_data_direction dir,
+							 void *buf, const void *init,
+							 void (*push)(struct ipc_host_env_tag *, uint32_t));
+void rwnx_ipc_elem_var_deallocs(struct rwnx_hw *rwnx_hw,
+								struct rwnx_ipc_elem_var *elem);
+int rwnx_ipc_unsup_rx_vec_elem_allocs(struct rwnx_hw *rwnx_hw,
+									  struct rwnx_ipc_skb_elem *elem);
+
+void rwnx_error_ind(struct rwnx_hw *rwnx_hw);
+void rwnx_umh_done(struct rwnx_hw *rwnx_hw);
+
+void rwnx_ipc_sta_buffer_init(struct rwnx_hw *rwnx_hw, int sta_idx);
+void rwnx_ipc_sta_buffer(struct rwnx_hw *rwnx_hw, struct rwnx_sta *sta, int tid, int size);
 #endif /* _RWNX_IPC_UTILS_H_ */

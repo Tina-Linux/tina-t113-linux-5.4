@@ -9,7 +9,6 @@
  */
 
 #include "dev_disp.h"
-#include "de/disp_lcd.h"
 #include <linux/ion.h>
 #include <uapi/linux/ion.h>
 #include <linux/pm_runtime.h>
@@ -158,12 +157,6 @@ static ssize_t disp_sys_show(struct device *dev,
 				esd_inf.esd_check_func_pos, esd_inf.rst_cnt);
 			}
 #endif
-		} else if (dispdev->type == DISP_OUTPUT_TYPE_HDMI) {
-			int mode = dispdev->get_mode(dispdev);
-
-			count += sprintf(buf + count,
-					 "\thdmi output mode(%d)\tfps:%d.%d",
-					 mode, fps / 10, fps % 10);
 		} else if (dispdev->type == DISP_OUTPUT_TYPE_TV) {
 			int mode = dispdev->get_mode(dispdev);
 
@@ -1238,7 +1231,6 @@ static s32 parser_disp_init_para(const struct device_node *np,
 	} else if (value == 2) {
 		init_para->output_type[0] = DISP_OUTPUT_TYPE_TV;
 	} else if (value == 3) {
-		init_para->output_type[0] = DISP_OUTPUT_TYPE_HDMI;
 	} else if (value == 4) {
 		init_para->output_type[0] = DISP_OUTPUT_TYPE_VGA;
 	} else if (value == 5) {
@@ -1290,13 +1282,6 @@ static s32 parser_disp_init_para(const struct device_node *np,
 		init_para->using_device_config[0] = true;
 	}
 
-	if (of_property_read_u32(np, "screen0_output_dvi_hdmi", &value) < 0) {
-		__inf("of_property_read screen0_output_dvi_hdmi fail\n");
-	} else {
-		init_para->output_dvi_hdmi[0] = value;
-		init_para->using_device_config[0] = true;
-	}
-
 	if (of_property_read_u32(np, "screen0_output_range", &value) < 0) {
 		__inf("of_property_read screen0_output_range fail\n");
 	} else {
@@ -1333,7 +1318,6 @@ static s32 parser_disp_init_para(const struct device_node *np,
 		} else if (value == 2) {
 			init_para->output_type[1] = DISP_OUTPUT_TYPE_TV;
 		} else if (value == 3) {
-			init_para->output_type[1] = DISP_OUTPUT_TYPE_HDMI;
 		} else if (value == 4) {
 			init_para->output_type[1] = DISP_OUTPUT_TYPE_VGA;
 		} else if (value == 5) {
@@ -1383,14 +1367,6 @@ static s32 parser_disp_init_para(const struct device_node *np,
 			__inf("of_property_read screen1_output_cs fail\n");
 		} else {
 			init_para->output_cs[1] = value;
-			init_para->using_device_config[1] = true;
-		}
-
-		if (of_property_read_u32(np, "screen1_output_dvi_hdmi", &value) < 0) {
-			__inf(
-			    "of_property_read screen1_output_dvi_hdmi fail\n");
-		} else {
-			init_para->output_dvi_hdmi[1] = value;
 			init_para->using_device_config[1] = true;
 		}
 
@@ -1529,7 +1505,7 @@ static int init_disp_ion_mgr(struct disp_ion_mgr *ion_mgr)
 
 static int __disp_ion_alloc_coherent(struct disp_ion_mem *mem)
 {
-	unsigned int flags = ION_FLAG_CACHED;
+	unsigned int flags = 0;
 	unsigned int heap_id_mask;
 	int fd = -1;
 	struct dma_buf *dmabuf;
@@ -1702,12 +1678,6 @@ static void deinit_disp_ion_mgr(struct disp_ion_mgr *ion_mgr)
 }
 #endif
 
-s32 disp_set_hdmi_func(struct disp_device_func *func)
-{
-	return bsp_disp_set_hdmi_func(func);
-}
-EXPORT_SYMBOL(disp_set_hdmi_func);
-
 s32 disp_set_edp_func(struct disp_tv_func *func)
 {
 	return bsp_disp_set_edp_func(func);
@@ -1719,12 +1689,6 @@ s32 disp_set_vdpo_func(struct disp_tv_func *func)
 	return bsp_disp_set_vdpo_func(func);
 }
 EXPORT_SYMBOL(disp_set_vdpo_func);
-
-s32 disp_set_hdmi_detect(bool hpd)
-{
-	return bsp_disp_hdmi_set_detect(hpd);
-}
-EXPORT_SYMBOL(disp_set_hdmi_detect);
 
 s32 disp_tv_register(struct disp_tv_func *func)
 {
@@ -1770,7 +1734,6 @@ int disp_device_set_config(struct disp_init_para *init,
 	config.bits = init->output_bits[screen_id];
 	config.eotf = init->output_eotf[screen_id];
 	config.cs = init->output_cs[screen_id];
-	config.dvi_hdmi = init->output_dvi_hdmi[screen_id];
 	config.range = init->output_range[screen_id];
 	config.scan = init->output_scan[screen_id];
 	config.aspect_ratio = init->output_aspect_ratio[screen_id];
@@ -1800,12 +1763,7 @@ static void start_work(struct work_struct *work)
 			    g_disp_drv.disp_init.output_type[screen_id%DE_NUM];
 			int lcd_registered =
 			    bsp_disp_get_lcd_registered(screen_id);
-			int hdmi_registered = bsp_disp_get_hdmi_registered();
 
-			__inf
-			    ("sel=%d, output_type=%d, lcd_reg=%d,hdmi_reg=%d\n",
-			     screen_id, output_type, lcd_registered,
-			     hdmi_registered);
 			if (((disp_mode == DISP_INIT_MODE_SCREEN0)
 			     && (screen_id == 0))
 			    || ((disp_mode == DISP_INIT_MODE_SCREEN1)
@@ -1814,17 +1772,6 @@ static void start_work(struct work_struct *work)
 					if (lcd_registered &&
 					    bsp_disp_get_output_type(screen_id)
 					    != DISP_OUTPUT_TYPE_LCD) {
-						disp_device_set_config(
-								       &g_disp_drv.disp_init, screen_id);
-						suspend_output_type[screen_id] =
-						    output_type;
-					}
-				} else if (output_type
-				    == DISP_OUTPUT_TYPE_HDMI) {
-					if (hdmi_registered &&
-					    bsp_disp_get_output_type(screen_id)
-					    != DISP_OUTPUT_TYPE_HDMI) {
-						msleep(600);
 						disp_device_set_config(
 								       &g_disp_drv.disp_init, screen_id);
 						suspend_output_type[screen_id] =
@@ -1839,9 +1786,7 @@ static void start_work(struct work_struct *work)
 			}
 		}
 	} else {
-		if ((g_disp_drv.para.boot_info.type == DISP_OUTPUT_TYPE_HDMI)
-		    && !bsp_disp_get_hdmi_registered())
-			return;
+
 		if (bsp_disp_get_output_type(g_disp_drv.para.boot_info.disp) !=
 		    g_disp_drv.para.boot_info.type) {
 			bsp_disp_sync_with_hw(&g_disp_drv.para);
@@ -2372,8 +2317,6 @@ static s32 disp_init(struct platform_device *pdev)
 		}
 	}
 
-	para->boot_info.dvi_hdmi =
-		g_disp_drv.disp_init.output_dvi_hdmi[para->boot_info.disp];
 	para->boot_info.range =
 		g_disp_drv.disp_init.output_range[para->boot_info.disp];
 	para->boot_info.scan =
@@ -2685,7 +2628,6 @@ void disp_device_off(void)
 
 int disp_release(struct inode *inode, struct file *file)
 {
-#if 0
 	if (!atomic_dec_and_test(&g_driver_ref_count)) {
 		/* There is any other user, just return. */
 		return 0;
@@ -2693,7 +2635,6 @@ int disp_release(struct inode *inode, struct file *file)
 
 #ifdef CONFIG_DISP2_SUNXI_DEVICE_OFF_ON_RELEASE
 	disp_device_off();
-#endif
 #endif
 	return 0;
 }
@@ -3181,19 +3122,7 @@ static int disp_blank(bool blank)
 
 	for (screen_id = 0; screen_id < num_screens; screen_id++) {
 		mgr = g_disp_drv.mgr[screen_id];
-		/* Currently remove !mgr->device condition,
-		 * avoiding problem in the following case:
-		 *
-		 *   attach manager and device -> disp blank --> blank success
-		 *   deattach manager and device -> disp unblank --> fail
-		 *   (cause don't satisfy !mgr->device condition)
-		 *   attach manager and device --> problem arises
-		 *   (manager will be always on unblank state)
-		 *
-		 * The scenario is: hdmi plug in -> enter standy
-		 *  -> hdmi plug out -> exit standby -> hdmi plug in
-		 *  -> display blank on hdmi screen
-		 */
+
 		if (!mgr)
 			continue;
 
@@ -3412,7 +3341,6 @@ int disp_suspend(struct device *dev)
 				dispdev_suspend->suspend(dispdev_suspend);
 		}
 	}
-	/* FIXME: hdmi suspend */
 	suspend_status |= DISPLAY_DEEP_SLEEP;
 	suspend_prestep = 1;
 #if defined(CONFIG_PM_RUNTIME)
@@ -3607,11 +3535,8 @@ long disp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #ifdef EINK_FLUSH_TIME_TEST
 	do_gettimeofday(&ioctrl_start_timer);
 #endif				/*test eink time */
-	num_screens = bsp_disp_feat_get_num_screens();
 
-	if (cmd == DISP_NODE_LCD_MESSAGE_REQUEST || cmd == DISP_RELOAD_LCD) {
-		goto handle_cmd;
-	}
+	num_screens = bsp_disp_feat_get_num_screens();
 
 	if (copy_from_user
 	    ((void *)karg, (void __user *)arg, 4 * sizeof(unsigned long))) {
@@ -3656,7 +3581,6 @@ long disp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	if (cmd == DISP_print)
 		__wrn("cmd:0x%x,%ld,%ld\n", cmd, ubuffer[0], ubuffer[1]);
 
-handle_cmd:
 	switch (cmd) {
 		/* ----disp global---- */
 	case DISP_SET_BKCOLOR:
@@ -3729,9 +3653,7 @@ handle_cmd:
 				break;
 
 			if (ubuffer[1]) {
-#ifdef CONFIG_ARCH_SUN50IW6
-			bsp_disp_hdmi_cec_standby_request();
-#endif
+
 #if defined(CONFIG_PM_RUNTIME)
 				if (g_disp_drv.dev)
 					pm_runtime_put(g_disp_drv.dev);
@@ -4226,27 +4148,12 @@ handle_cmd:
 	}
 
 
-		/* ---- hdmi --- */
-	case DISP_HDMI_SUPPORT_MODE:
-		{
-			ret =
-			    bsp_disp_hdmi_check_support_mode(ubuffer[0],
-							     ubuffer[1]);
-			break;
-		}
 
 	case DISP_SET_TV_HPD:
 		{
 			ret = bsp_disp_tv_set_hpd(ubuffer[0]);
 			break;
 		}
-#ifdef CONFIG_ARCH_SUN50IW6
-	case DISP_CEC_ONE_TOUCH_PLAY:
-	{
-		ret = bsp_disp_hdmi_cec_send_one_touch_play();
-		break;
-	}
-#endif
 		/* ----enhance---- */
 	case DISP_ENHANCE_ENABLE:
 		{
@@ -4492,75 +4399,6 @@ handle_cmd:
 			if (mgr && mgr->set_ksc_para)
 				ret = mgr->set_ksc_para(mgr, &ksc);
 
-			break;
-		}
-	case DISP_NODE_LCD_MESSAGE_REQUEST:
-		{
-			int ret;
-			struct para lcd_debug_para;
-			struct para lcd_debug_para_tmp;
-			struct dt_property *dt_prop;
-			char prop_name[32] = {0};
-			struct dt_property *dt_prop_dts;
-			char prop_dts_name[32] = {0};
-			unsigned char value[100] = {0};
-			unsigned char dts_value[100] = {0};
-
-			if  (copy_from_user(&lcd_debug_para, (void *) arg, sizeof(struct para))) {
-				return -2;
-			}
-			if (copy_from_user(&lcd_debug_para_tmp, (void *) arg, sizeof(struct para))) {
-				return -2;
-			}
-			dt_prop = &lcd_debug_para.prop_src;
-
-			ret = copy_from_user(prop_name, dt_prop->name, 32);
-
-			if (ret)
-				return -2;
-
-			ret = copy_from_user(value, dt_prop->value, dt_prop->length);
-
-			if (ret)
-				return -2;
-
-			dt_prop->name = prop_name;
-			dt_prop->value = (void *)value;
-
-			dt_prop_dts = &lcd_debug_para.prop_dts;
-
-			ret = copy_from_user(prop_dts_name, dt_prop_dts->name, 32);
-
-			if (ret)
-				return -2;
-
-			ret = copy_from_user(dts_value, dt_prop_dts->value, dt_prop_dts->length);
-
-			if (ret)
-				return -2;
-
-			dt_prop_dts->name = prop_dts_name;
-			dt_prop_dts->value = (void *)dts_value;
-
-			ret = handle_request(&lcd_debug_para);
-
-			if (ret)
-				return -1;
-
-			if (copy_to_user((void __user *)lcd_debug_para_tmp.prop_dts.name, lcd_debug_para.prop_dts.name, 32))
-				return -3;
-
-			if (copy_to_user((void __user *)lcd_debug_para_tmp.prop_dts.value, lcd_debug_para.prop_dts.value, lcd_debug_para.prop_dts.length))
-				return -3;
-
-			if (copy_to_user(&((struct para *)arg)->prop_dts.length, &lcd_debug_para.prop_dts.length, sizeof(lcd_debug_para.prop_dts.length)))
-				return -3;
-
-			return ret;
-		}
-	case DISP_RELOAD_LCD:
-		{
-			reload_lcd();
 			break;
 		}
 

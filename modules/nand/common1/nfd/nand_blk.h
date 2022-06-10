@@ -11,7 +11,7 @@
 #ifndef __NAND_BLK_H__
 #define __NAND_BLK_H__
 
-#include "../phy-nand/nand-partition3/sunxi_nand_partitions.h"
+#include "../phy-nand/nand-partition/phy.h"
 #include "nand_lib.h"
 #include "nand_type.h"
 #include <asm/cacheflush.h>

@@ -3,12 +3,6 @@
  *
  * modify base on juno.dts
  */
- /* optee used 7MB: SHM 2M: OS: 1M: TA:4M*/
-/memreserve/ 0x41900000 0x00700000;
-/* DSP used 1MB */
-/memreserve/ 0x42000000 0x00100000;
-/* DSP ARM share space 64K */
-/memreserve/ 0x42100000 0x00010000;
 
 #include <dt-bindings/clock/sun8iw20-ccu.h>
 #include <dt-bindings/clock/sun8iw20-r-ccu.h>
@@ -54,8 +48,6 @@
 		pwm7 = &pwm7;
 		ir0 = &s_cir0;
 		tv0 = &tv0;
-		tvd = &tvd;
-		tvd0 = &tvd0;
 		share_space0 = &share_space0;
 	};
 
@@ -138,38 +130,67 @@
 
 	cpu_opp_table: cpu-opp-table {
 		compatible = "allwinner,sun50i-operating-points";
-		nvmem-cells = <&vf_table>;
-		nvmem-cell-names = "speed";
+		nvmem-cells = <&speedbin_efuse>, <&cpubin_efuse>;
+		nvmem-cell-names = "speed", "bin";
 		opp-shared;
 
 		opp@480000000 {
 			opp-hz = /bits/ 64 <480000000>;
 			clock-latency-ns = <244144>; /* 8 32k periods */
-			opp-microvolt-a0 = <950000>;
+			opp-microvolt-a0 = <900000>;
+			opp-microvolt-a1 = <900000>;
+
+			opp-microvolt-b0 = <950000>;
+			opp-supported-hw = <0x3>;
 		};
 
 		opp@720000000 {
 			opp-hz = /bits/ 64 <720000000>;
 			clock-latency-ns = <244144>; /* 8 32k periods */
-			opp-microvolt-a0 = <950000>;
+			opp-microvolt-a0 = <900000>;
+			opp-microvolt-a1 = <900000>;
+
+			opp-microvolt-b0 = <950000>;
+			opp-supported-hw = <0x3>;
 		};
 
 		opp@912000000 {
 			opp-hz = /bits/ 64 <912000000>;
 			clock-latency-ns = <244144>; /* 8 32k periods */
 			opp-microvolt-a0 = <950000>;
+			opp-microvolt-a1 = <900000>;
+
+			opp-microvolt-b0 = <950000>;
+			opp-supported-hw = <0x3>;
 		};
 
 		opp@1008000000 {
 			opp-hz = /bits/ 64 <1008000000>;
 			clock-latency-ns = <244144>; /* 8 32k periods */
-			opp-microvolt-a0 = <950000>;
+			opp-microvolt-a0 = <1000000>;
+			opp-microvolt-a1 = <900000>;
+
+			opp-microvolt-b0 = <950000>;
+			opp-supported-hw = <0x3>;
 		};
 
 		opp@1104000000 {
 			opp-hz = /bits/ 64 <1104000000>;
 			clock-latency-ns = <244144>; /* 8 32k periods */
-			opp-microvolt-a0 = <950000>;
+			opp-microvolt-a0 = <1050000>;
+			opp-microvolt-a1 = <950000>;
+
+			opp-microvolt-b0 = <950000>;
+			opp-supported-hw = <0x3>;
+		};
+
+		opp@1200000000 {
+			opp-hz = /bits/ 64 <1200000000>;
+			clock-latency-ns = <244144>; /* 8 32k periods */
+			opp-microvolt-a0 = <1100000>;
+			opp-microvolt-a1 = <1000000>;
+
+			opp-supported-hw = <0x1>;
 		};
 	};
 
@@ -215,10 +236,21 @@
 		/* arm write addr and len */
 		/* dsp log addr and len */
 		/* reserve */
-		reg = <	0x42100000 0x00001000
-			0x42101000 0x00002000
-			0x42102000 0x0000E000
-			0x00000000 0x00000000>;
+        reg = < 0x42100000 0x00001000
+			    0x42101000 0x00002000
+				0x42102000 0x0000E000
+				0x00000000 0x00000000>;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		dsp0_reserved: dsp0@42000000 {
+			no-map;
+			reg = <0x0 0x42000000 0x0 0x100000>;
+		};
 	};
 
 	gic: interrupt-controller@3020000 {
@@ -317,7 +349,7 @@
 					hysteresis = <0>;
 				};
 				cpu_crit: cpu_crit@0 {
-					temperature = <115000>;
+					temperature = <110000>;
 					type = "critical";
 					hysteresis = <0>;
 				};
@@ -351,6 +383,7 @@
 				shift = <0>;
 				ver_a = <0x18590000>;
 				ver_b = <0x18590002>;
+				ver_d = <0x18590003>;
 			};
 
 			soc_id {
@@ -471,6 +504,22 @@
 				allwinner,muxsel = <0xF>;
 				allwinner,drive = <1>;
 				allwinner,pull = <1>;
+			};
+
+			gmac_pins_a: gmac@0 {
+				pins = "PE0", "PE1", "PE2", "PE3",
+				 "PE4", "PE5", "PE6", "PE7",
+				 "PE8","PE9", "PE10";
+				function = "gmac0";
+				drive-strength = <10>;
+			};
+
+			gmac_pins_b: gmac@1 {
+				pins = "PE0", "PE1", "PE2", "PE3",
+				 "PE4", "PE5", "PE6", "PE7",
+				 "PE8","PE9", "PE10";
+				function = "gpio_in";
+				drive-strength = <10>;
 			};
 
 			csi_mclk0_pins_a: csi_mclk0@0 {
@@ -697,10 +746,16 @@
 			clock-names = "gmac", "ephy";
 			resets = <&ccu RST_BUS_EMAC0>;
 			device_type = "gmac0";
-			gmac-power0;
-			gmac-power1;
-			gmac-power2;
-			status = "disabled";
+			pinctrl-0 = <&gmac_pins_a>;
+			pinctrl-1 = <&gmac_pins_b>;
+			phy-mode = "rmii";
+			use_ephy25m = <1>;
+			tx-delay = <7>;
+			rx-delay = <31>;
+			/*gmac-power0;*/
+			/*gmac-power1;*/
+			/*gmac-power2;*/
+			status = "okay";
 		};
 
 		sdc2: sdmmc@4022000 {
@@ -815,6 +870,7 @@
 			/*sunxi-dly-208M  = <1 0 0 0>;*/
 			/*sunxi-dly-104M-ddr  = <1 0 0 0>;*/
 			/*sunxi-dly-208M-ddr  = <1 0 0 0>;*/
+			status = "okay";
 		};
 
 		sdc1: sdmmc@4021000 {
@@ -921,6 +977,7 @@
 			    clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_VE>, <&ccu CLK_MBUS_VE>;
 			    clock-names = "bus_ve", "ve", "mbus_ve";
 			    resets = <&ccu RST_BUS_VE>;
+			    power-domains = <&pd R528_PD_VE>;
 			    iommus = <&mmu_aw 0 1>;
 			    status = "okay";
 		};
@@ -1077,7 +1134,6 @@
 			reg = <0x0 0x02009800 0x0 0x400>;
 			interrupts = <GIC_SPI 61 IRQ_TYPE_EDGE_RISING>;
 			clocks = <&ccu CLK_BUS_LRADC>;
-			clock-names = "mclk";
 			resets = <&ccu RST_BUS_LRADC>;
 			key_cnt = <5>;
 			key0 = <210 115>;
@@ -1113,8 +1169,12 @@
 				size = <0x4>;
 			};
 
-			vf_table: vf-table@00 {
+			speedbin_efuse: speedbin@00 {
 				reg = <0x00 2>;
+			};
+
+			cpubin_efuse: cpubin@28 {
+				reg = <0x28 2>;
 			};
 
 			ths_calib: calib@14 {
@@ -1164,7 +1224,7 @@
 				pinctrl-1 = <&csi0_pins_b>;
 				device_id = <0>;
 				iommus = <&mmu_aw 1 1>;
-				status = "okay";
+				status = "disable";
 			};
 			isp0: isp@5809410 {
 				compatible = "allwinner,sunxi-isp";
@@ -1241,7 +1301,7 @@
 				flash_handle = <&flash0>;
 				act_handle = <&actuator0>;
 				device_id = <0>;
-				status	= "okay";
+				status	= "disabled";
 			};
 			sensor1: sensor@5809480 {
 				reg = <0x0 0x05809480 0x0 0x10>;
@@ -1270,7 +1330,7 @@
 				flash_handle = <>;
 				act_handle = <>;
 				device_id = <1>;
-				status	= "okay";
+				status	= "disabled";
 			};
 			vinc0: vinc@5809000 {
 				compatible = "allwinner,sunxi-vin-core";
@@ -1483,7 +1543,7 @@
 					<GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>,
 					<GIC_SPI 130 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&ccu CLK_BUS_MSGBOX0>;
-			rpmsg_id = "sunxi,dsp-msgbox","sunxi,dsp-power-msgbox";
+			rpmsg_id = "sunxi,dsp-msgbox","sunxi,dsp-power-msgbox","rpmsg_chrdev";
 			resets = <&ccu RST_BUS_MSGBOX0>;
 			reset-names = "rst";
 			msgbox_amp_counts = <3>;
@@ -1494,29 +1554,29 @@
 			rpmsg_amp_remote-1 = <1>;
 			rpmsg_read_channel-1 = <0>;
 			rpmsg_write_channel-1 = <0>;
+			rpmsg_amp_remote-2 = <1>;
+			rpmsg_read_channel-2 = <3>;
+			rpmsg_write_channel-2 = <3>;
 		};
 
-		hdmi: hdmi@5500000 {
-			compatible = "allwinner,sunxi-hdmi";
-			reg = <0x0 0x05500000 0x0 0xfffff>;
-			interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&ccu CLK_BUS_HDMI>,
-				<&ccu CLK_HDMI_24M>,
-				<&ccu CLK_HDMI_CEC>,
-				<&ccu CLK_TCON_TV>;
-			clock-names = "clk_bus_hdmi",
-					"clk_ddc",
-					"clk_cec",
-					"clk_tcon_tv";
-			resets = <&ccu RST_BUS_HDMI_SUB>,
-				<&ccu RST_BUS_HDMI_MAIN>;
-			reset-names = "rst_bus_sub",
-				      "rst_bus_main";
-			assigned-clocks = <&ccu CLK_HDMI_CEC>;
-			assigned-clock-parents = <&ccu CLK_HDMI_CEC_32K>;
-			assigned-clock-rates = <0>;
-			status = "okay";
+		dsp0_rproc: dsp0@0 {
+			compatible = "sunxi,sunxi-remote-proc";
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges = <0x400000 0x400000 0x10000>,
+					 <0x420000 0x420000 0x8000>,
+					 <0x440000 0x440000 0x8000>,
+					 <0x42000000 0x12000000 0x100000>,
+					 <0x400000 0x20028000 0x10000>,
+					 <0x420000 0x20038000 0x8000>,
+					 <0x440000 0x20040000 0x8000>,
+					 <0x42000000 0x32000000 0x100000>;
+			interrupts = <GIC_SPI 104 IRQ_TYPE_EDGE_RISING>;
+			clocks = <&ccu CLK_DSP>;
+			resets = <&ccu RST_BUS_DSP>;
+			memory-region = <&dsp0_reserved>;
 		};
+
 		usbc0:usbc0@0 {
 			device_type = "usbc0";
 			compatible = "allwinner,sunxi-otg-manager";
@@ -1865,13 +1925,6 @@
 			};
 		};
 
-		hdmiaudio: hdmiaudio@20340a4 {
-			#sound-dai-cells = <0>;
-			reg = <0x0 0x020340a4 0x0 0x4>;
-			compatible = "allwinner,sunxi-hdmiaudio";
-			status = "disabled";
-		};
-
 		/* spdif addr: 0x02036000, the others is invalid to avoid build warining */
 		spdif:spdif@2036000 {
 			#sound-dai-cells = <0>;
@@ -1923,44 +1976,5 @@
 			nvmem-cell-names = "calibration";
 			#thermal-sensor-cells = <1>;
 		};
-
-		tvd: tvd@05c00000 {
-			compatible = "allwinner,sunxi-tvd";
-			reg = <0x0 0x05c00000 0x0 0x00010000>;/*tvd_top*/
-			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
-
-			clocks = <&ccu CLK_BUS_TVD_TOP>,
-			<&ccu CLK_MBUS_TVIN>;
-			clock-names = "clk_bus_tvd_top",
-			"clk_mbus_tvd";
-
-			resets = <&ccu RST_BUS_TVD_TOP>;
-			reset-names = "rst_bus_tvd_top";
-
-			tvd-number = <1>;
-			tvds = <&tvd0>;
-			status = "okay";
-		};
-
-		tvd0: tvd0@05c01000 {
-			compatible = "allwinner,sunxi-tvd0";
-			reg = <0x0 0x05c01000 0x0 0x00010000>;
-			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
-
-			clocks = <&ccu CLK_TVD>,
-			<&ccu CLK_BUS_TVD>;
-			clock-names = "clk_tvd0","clk_bus_tvd0";
-
-			resets = <&ccu RST_BUS_TVD>;
-			reset-names = "rst_bus_tvd0";
-
-			assigned-clocks = <&ccu CLK_TVD>;
-			assigned-clock-parents = <&ccu CLK_PLL_VIDEO1>;
-
-			tvd_used = <1>;
-			tvd_if = <0>;
-			status = "okay";
-		};
-
 	};
 };

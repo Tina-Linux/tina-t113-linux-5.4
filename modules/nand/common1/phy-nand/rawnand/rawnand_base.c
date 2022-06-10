@@ -13,8 +13,7 @@
 
 #include "rawnand_base.h"
 #include "../../nfd/nand_osal_for_linux.h"
-/*#include "../nand_boot.h"*/
-#include "../nand-partition3/sunxi_nand_boot.h"
+#include "../nand_boot.h"
 #include "../nand_errno.h"
 #include "../nand_physic_interface.h"
 #include "../nand_secure_storage.h"
@@ -280,7 +279,6 @@ __u32 rawnand_get_phy_block_size(void)
 	nci = g_nctri->nci;
 	return nci->page_cnt_per_blk * (nci->sector_cnt_per_page << 9);
 }
-
 
 __u32 rawnand_used_lsb_pages(void)
 {

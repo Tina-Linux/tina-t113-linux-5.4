@@ -159,12 +159,6 @@ struct sun6i_dma_lli {
 	 * or freeing it).
 	 */
 	struct sun6i_dma_lli	*v_lli_next;
-
-	/*
-	 * This param is used to store the physical address of the
-	 * coherent cache requested by dma_pool_alloc.
-	 */
-	dma_addr_t	        this_phy;
 };
 
 
@@ -251,8 +245,9 @@ static inline void sun6i_dma_dump_com_regs(struct sun6i_dma_dev *sdev)
 static inline void sun6i_dma_dump_chan_regs(struct sun6i_dma_dev *sdev,
 					    struct sun6i_pchan *pchan)
 {
+	phys_addr_t reg = virt_to_phys(pchan->base);
 
-	dev_dbg(sdev->slave.dev, "Chan %d\n"
+	dev_dbg(sdev->slave.dev, "Chan %d reg: %pa\n"
 		"\t___en(%04x): \t0x%08x\n"
 		"\tpause(%04x): \t0x%08x\n"
 		"\tstart(%04x): \t0x%08x\n"
@@ -261,7 +256,7 @@ static inline void sun6i_dma_dump_chan_regs(struct sun6i_dma_dev *sdev,
 		"\t__dst(%04x): \t0x%08x\n"
 		"\tcount(%04x): \t0x%08x\n"
 		"\t_para(%04x): \t0x%08x\n\n",
-		pchan->idx,
+		pchan->idx, &reg,
 		DMA_CHAN_ENABLE,
 		readl(pchan->base + DMA_CHAN_ENABLE),
 		DMA_CHAN_PAUSE,
@@ -396,14 +391,15 @@ static void *sun6i_dma_lli_add(struct sun6i_dma_lli *prev,
 static inline void sun6i_dma_dump_lli(struct sun6i_vchan *vchan,
 				      struct sun6i_dma_lli *lli)
 {
+	phys_addr_t p_lli = virt_to_phys(lli);
+
 	dev_dbg(chan2dev(&vchan->vc.chan),
-		"\n\tdesc:   p - %pad v - 0x%p\n"
+		"\n\tdesc:   p - %pa v - 0x%p\n"
 		"\t\tc - 0x%08x s - 0x%08x d - 0x%08x\n"
 		"\t\tl - 0x%08x p - 0x%08x n - 0x%08x\n",
-		&lli->this_phy, lli,
+		&p_lli, lli,
 		lli->cfg, lli->src, lli->dst,
 		lli->len, lli->para, lli->p_lli_next);
-
 }
 
 static void sun6i_dma_free_desc(struct virt_dma_desc *vd)
@@ -583,8 +579,10 @@ static irqreturn_t sun6i_dma_interrupt(int irq, void *dev_id)
 						cb(cb_data);
 				} else {
 					spin_lock(&vchan->vc.lock);
-					vchan_cookie_complete(&pchan->desc->vd);
-					pchan->done = pchan->desc;
+					if (pchan->desc) {
+						vchan_cookie_complete(&pchan->desc->vd);
+						pchan->done = pchan->desc;
+					}
 					spin_unlock(&vchan->vc.lock);
 				}
 			}
@@ -679,7 +677,6 @@ static struct dma_async_tx_descriptor *sun6i_dma_prep_dma_memcpy(
 		dev_err(sdev->slave.dev, "Failed to alloc lli memory\n");
 		goto err_txd_free;
 	}
-	v_lli->this_phy = p_lli;
 
 	v_lli->src = src;
 	v_lli->dst = dest;
@@ -753,7 +750,6 @@ static struct dma_async_tx_descriptor *sun6i_dma_prep_slave_sg(
 		if (!v_lli)
 			goto err_lli_free;
 
-		v_lli->this_phy = p_lli;
 		p_lli = (u32)SET_DESC_HIGH_ADDR(p_lli);
 		v_lli->len = sg_dma_len(sg);
 
@@ -799,7 +795,7 @@ static struct dma_async_tx_descriptor *sun6i_dma_prep_slave_sg(
 
 err_lli_free:
 	for (prev = txd->v_lli; prev; prev = prev->v_lli_next)
-		dma_pool_free(sdev->pool, prev, prev->this_phy);
+		dma_pool_free(sdev->pool, prev, virt_to_phys(prev));
 	kfree(txd);
 	return NULL;
 }
@@ -838,7 +834,7 @@ static struct dma_async_tx_descriptor *sun6i_dma_prep_dma_cyclic(
 			dev_err(sdev->slave.dev, "Failed to alloc lli memory\n");
 			goto err_lli_free;
 		}
-		v_lli->this_phy = p_lli;
+
 		v_lli->len = period_len;
 
 		if (dir == DMA_MEM_TO_DEV) {
@@ -870,7 +866,7 @@ static struct dma_async_tx_descriptor *sun6i_dma_prep_dma_cyclic(
 
 err_lli_free:
 	for (prev = txd->v_lli; prev; prev = prev->v_lli_next)
-		dma_pool_free(sdev->pool, prev, prev->this_phy);
+		dma_pool_free(sdev->pool, prev, virt_to_phys(prev));
 	kfree(txd);
 	return NULL;
 }

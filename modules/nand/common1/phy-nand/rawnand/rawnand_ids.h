@@ -119,7 +119,6 @@
  * micron: different flash have the same id
  */
 #define NAND_FIND_ID_TAB_BY_NAME (1 << 22)
-
 /*it use in the case: name(read from flash) is not the unique,
  * but id table 1 is conifure to NAND_FIND_ID_TAB_BY_NAME. in this case,
  * you can use NAND_FIND_IN_TAB_BY_NAME_CANCEL to cancel name matching in id table 2.

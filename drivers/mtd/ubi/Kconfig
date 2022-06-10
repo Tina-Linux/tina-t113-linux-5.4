@@ -30,7 +30,7 @@ config MTD_UBI_WL_THRESHOLD
 
 config MTD_UBI_BEB_LIMIT
 	int "Maximum expected bad eraseblock count per 1024 eraseblocks"
-	default 40
+	default 20
 	range 0 768
 	help
 	  This option specifies the maximum bad physical eraseblocks UBI

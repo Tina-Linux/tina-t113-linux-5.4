@@ -181,7 +181,6 @@
 
 #define USE_CEC_DDC_PAD
 #define DSI_VERSION_40
-#define TV_UGLY_CLK_RATE 216000000
 
 #elif defined(CONFIG_ARCH_SUN50IW1)
 

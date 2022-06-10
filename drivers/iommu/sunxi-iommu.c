@@ -193,11 +193,8 @@ sunxi_tlb_init(struct sunxi_iommu_owner *owner,
 		/* disable preftech for tlb invalid mode for unsolved issue for sun50iw10(old)*/
 		sunxi_iommu_write(iommu, IOMMU_TLB_PREFETCH_REG, 0x0);
 	}
-#elif IS_ENABLED(CONFIG_ARCH_SUN8IW20)
+#elif IS_ENABLED(CONFIG_ARCH_SUN8IW20) || IS_ENABLED(CONFIG_ARCH_SUN20IW1)
 	sunxi_iommu_write(iommu, IOMMU_TLB_PREFETCH_REG, 0x17);
-#elif IS_ENABLED(CONFIG_ARCH_SUN20IW1)
-	/* sun20iw1p1: disable preftech on G2D/VE for better performance */
-	sunxi_iommu_write(iommu, IOMMU_TLB_PREFETCH_REG, 0x16);
 #else
 	sunxi_iommu_write(iommu, IOMMU_TLB_PREFETCH_REG, 0x7f);
 #endif

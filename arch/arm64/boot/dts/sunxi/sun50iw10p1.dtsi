@@ -176,8 +176,8 @@
 
 	cpu_opp_table: cpu-opp-table {
 		compatible = "allwinner,sun50i-operating-points";
-		nvmem-cells = <&speedbin_efuse>, <&cpubin_efuse>, <&cpubin_extend>;
-		nvmem-cell-names = "speed", "bin", "bin_ext";
+		nvmem-cells = <&speedbin_efuse>, <&cpubin_efuse>;
+		nvmem-cell-names = "speed", "bin";
 		opp-shared;
 
 		opp@408000000 {
@@ -186,14 +186,8 @@
 			opp-microvolt-a0 = <900000>;
 			opp-microvolt-a1 = <900000>;
 			opp-microvolt-a2 = <900000>;
-			opp-microvolt-a3 = <940000>;
-			opp-microvolt-a4 = <940000>;
-			opp-microvolt-a5 = <920000>;
-			opp-microvolt-a6 = <920000>;
 			opp-microvolt-b0 = <900000>;
 			opp-microvolt-b1 = <900000>;
-			opp-microvolt-b2 = <940000>;
-			opp-microvolt-b3 = <920000>;
 			opp-supported-hw = <0x7>;
 		};
 
@@ -203,14 +197,8 @@
 			opp-microvolt-a0 = <900000>;
 			opp-microvolt-a1 = <900000>;
 			opp-microvolt-a2 = <900000>;
-			opp-microvolt-a3 = <940000>;
-			opp-microvolt-a4 = <940000>;
-			opp-microvolt-a5 = <920000>;
-			opp-microvolt-a6 = <920000>;
 			opp-microvolt-b0 = <900000>;
 			opp-microvolt-b1 = <900000>;
-			opp-microvolt-b2 = <940000>;
-			opp-microvolt-b3 = <920000>;
 			opp-supported-hw = <0x7>;
 		};
 
@@ -220,14 +208,8 @@
 			opp-microvolt-a0 = <940000>;
 			opp-microvolt-a1 = <900000>;
 			opp-microvolt-a2 = <900000>;
-			opp-microvolt-a3 = <940000>;
-			opp-microvolt-a4 = <940000>;
-			opp-microvolt-a5 = <920000>;
-			opp-microvolt-a6 = <920000>;
 			opp-microvolt-b0 = <900000>;
 			opp-microvolt-b1 = <900000>;
-			opp-microvolt-b2 = <940000>;
-			opp-microvolt-b3 = <920000>;
 			opp-supported-hw = <0x7>;
 		};
 
@@ -237,14 +219,8 @@
 			opp-microvolt-a0 = <1020000>;
 			opp-microvolt-a1 = <980000>;
 			opp-microvolt-a2 = <950000>;
-			opp-microvolt-a3 = <1020000>;
-			opp-microvolt-a4 = <960000>;
-			opp-microvolt-a5 = <940000>;
-			opp-microvolt-a6 = <940000>;
 			opp-microvolt-b0 = <980000>;
 			opp-microvolt-b1 = <950000>;
-			opp-microvolt-b2 = <960000>;
-			opp-microvolt-b3 = <940000>;
 			opp-supported-hw = <0x7>;
 		};
 
@@ -254,14 +230,8 @@
 			opp-microvolt-a0 = <1100000>;
 			opp-microvolt-a1 = <1020000>;
 			opp-microvolt-a2 = <1000000>;
-			opp-microvolt-a3 = <1100000>;
-			opp-microvolt-a4 = <980000>;
-			opp-microvolt-a5 = <960000>;
-			opp-microvolt-a6 = <960000>;
 			opp-microvolt-b0 = <1020000>;
 			opp-microvolt-b1 = <1000000>;
-			opp-microvolt-b2 = <980000>;
-			opp-microvolt-b3 = <960000>;
 			opp-supported-hw = <0x7>;
 		};
 
@@ -271,14 +241,8 @@
 			opp-microvolt-a0 = <1160000>;
 			opp-microvolt-a1 = <1060000>;
 			opp-microvolt-a2 = <1030000>;
-			opp-microvolt-a3 = <1160000>;
-			opp-microvolt-a4 = <1020000>;
-			opp-microvolt-a5 = <1000000>;
-			opp-microvolt-a6 = <1000000>;
 			opp-microvolt-b0 = <1060000>;
 			opp-microvolt-b1 = <1030000>;
-			opp-microvolt-b2 = <1020000>;
-			opp-microvolt-b3 = <1000000>;
 			opp-supported-hw = <0x7>;
 		};
 
@@ -287,8 +251,6 @@
 			clock-latency-ns = <244144>; /* 8 32k periods */
 			opp-microvolt-b0 = <1100000>;
 			opp-microvolt-b1 = <1070000>;
-			opp-microvolt-b2 = <1060000>;
-			opp-microvolt-b3 = <1040000>;
 			opp-supported-hw = <0x6>;
 		};
 
@@ -298,10 +260,6 @@
 			opp-microvolt-a0 = <1180000>;
 			opp-microvolt-a1 = <1180000>;
 			opp-microvolt-a2 = <1130000>;
-			opp-microvolt-a3 = <1180000>;
-			opp-microvolt-a4 = <1100000>;
-			opp-microvolt-a5 = <1080000>;
-			opp-microvolt-a6 = <1080000>;
 			opp-supported-hw = <0x1>;
 		};
 
@@ -310,8 +268,6 @@
 			clock-latency-ns = <244144>; /* 8 32k periods */
 			opp-microvolt-b0 = <1180000>;
 			opp-microvolt-b1 = <1130000 1130000 1140000>;
-			opp-microvolt-b2 = <1100000>;
-			opp-microvolt-b3 = <1080000>;
 			opp-supported-hw = <0x6>;
 		};
 
@@ -320,7 +276,7 @@
 			clock-latency-ns = <244144>; /* 8 32k periods */
 			opp-microvolt-b0 = <1180000>;
 			opp-microvolt-b1 = <1130000 1130000 1140000>;
-			opp-supported-hw = <0x0>;
+			opp-supported-hw = <0x2>;
 		};
 	};
 
@@ -705,10 +661,6 @@
 
 			cpubin_efuse: calib@1c {
 				reg = <0x1c 2>;
-			};
-
-			cpubin_extend: calib@28 {
-				reg = <0x28 2>;
 			};
 
 			/* some guys has nothing to do with nvmem */

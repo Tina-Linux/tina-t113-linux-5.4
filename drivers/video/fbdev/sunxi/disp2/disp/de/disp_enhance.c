@@ -209,7 +209,7 @@ static s32 disp_enhance_enable(struct disp_enhance *enhance)
 					&enhancep->config.info.size.height);
 		if (dispdev->type == DISP_OUTPUT_TYPE_HDMI)
 			enhancep->config.info.mode = (enhancep->config.info.mode
-			    & 0xffff0000) | (1);	/* hdmi */
+			    & 0xffff0000) | (1);
 		else
 			enhancep->config.info.mode = (enhancep->config.info.mode
 			    & 0xffff0000) | (0);	/* lcd */

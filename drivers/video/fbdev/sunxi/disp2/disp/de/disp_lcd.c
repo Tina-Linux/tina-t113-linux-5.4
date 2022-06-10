@@ -11,7 +11,6 @@
 #include <linux/reset.h>
 #include "disp_lcd.h"
 #include "../dev_disp.h"
-#include "../lcd/panels.h"
 
 extern void lcd_set_panel_funs(void);
 #define DISP_LCD_MODE_DIRTY_MASK 0x80000000
@@ -1899,18 +1898,13 @@ static s32 disp_lcd_enable(struct disp_device *lcd)
 	unsigned long flags;
 	struct disp_lcd_private_data *lcdp = disp_lcd_get_priv(lcd);
 	struct disp_manager *mgr = NULL;
-	int ret = 0;
+	int ret;
 	int i;
 
 	if ((lcd == NULL) || (lcdp == NULL)) {
 		DE_WRN("NULL hdl!\n");
 		return DIS_FAIL;
 	}
-
-	if (!disp_lcd_is_used(lcd)) {
-		return ret;
-	}
-
 	flush_work(&lcd->close_eink_panel_work);
 	DE_INF("lcd %d\n", lcd->disp);
 	mgr = lcd->manager;
@@ -2026,17 +2020,12 @@ static s32 disp_lcd_enable(struct disp_device *lcd)
 	int i;
 	struct disp_manager *mgr = NULL;
 	unsigned bl;
-	int ret = 0;
+	int ret;
 
 	if ((lcd == NULL) || (lcdp == NULL)) {
 		DE_WRN("NULL hdl!\n");
 		return DIS_FAIL;
 	}
-
-	if (!disp_lcd_is_used(lcd)) {
-		return ret;
-	}
-
 	__inf("lcd %d\n", lcd->disp);
 	mgr = lcd->manager;
 	if (mgr == NULL) {
@@ -3066,9 +3055,9 @@ s32 disp_init_lcd(struct disp_bsp_init_para *para)
 #if defined(SUPPORT_DSI)
 	u32 i = 0, index_base;
 #endif
-#if defined(CONFIG_ARCH_SUN8IW17P1)
 	char primary_key[20];
 	int ret = 0, value = 1;
+#if defined(CONFIG_ARCH_SUN8IW17P1)
 	s32 use_dsi_flag = 0;
 #endif
 
@@ -3108,6 +3097,11 @@ s32 disp_init_lcd(struct disp_bsp_init_para *para)
 			continue;
 		}
 
+		sprintf(primary_key, "lcd%d", disp);
+		ret = disp_sys_script_get_item(primary_key, "lcd_used", &value,
+					       1);
+		if (ret != 1 || value != 1)
+			continue;
 		lcd = &lcds[disp];
 		lcdp = &lcd_private[disp];
 		lcd->priv_data = (void *)lcdp;
@@ -3253,23 +3247,4 @@ s32 disp_exit_lcd(void)
 	lcd_private = NULL;
 
 	return 0;
-}
-
-extern struct disp_drv_info g_disp_drv;
-extern s32 disp_exit(void);
-void reload_lcd(void)
-{
-	int disp;
-	struct disp_lcd_private_data *lcdp;
-
-	disp = 0;
-	printk("lcd%d reloading\n", disp);
-	disp_lcd_disable(&lcds[disp]);
-	msleep(5000);
-	lcdp = disp_lcd_get_priv(&lcds[disp]);
-	memset(&lcdp->lcd_cfg, 0, sizeof(lcdp->lcd_cfg));
-	disp_lcd_init(&lcds[disp], disp);
-	disp_lcd_set_panel_funs(&lcds[disp], "super_lcd_driver", &super_lcd_panel.func);
-	disp_lcd_enable(&lcds[disp]);
-	printk("lcd%d reload finish\n", disp);
 }

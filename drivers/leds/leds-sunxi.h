@@ -133,18 +133,6 @@ struct sunxi_led_classdev_group {
 	struct sunxi_led_info b;
 };
 
-static u32 sunxi_led_regs_offset[] = {
-	LEDC_CTRL_REG_OFFSET,
-	LED_RESET_TIMING_CTRL_REG_OFFSET,
-	LED_T01_TIMING_CTRL_REG_OFFSET,
-	LEDC_WAIT_TIME0_CTRL_REG,
-	LEDC_WAIT_TIME1_CTRL_REG,
-	LEDC_INT_CTRL_REG_OFFSET,
-#ifndef SUNXI_FPGA_LEDC
-	LEDC_DATA_FINISH_CNT_REG_OFFSET,
-#endif
-};
-
 struct sunxi_led {
 	u32 reset_ns;
 	u32 t1h_ns;
@@ -176,7 +164,6 @@ struct sunxi_led {
 	char regulator_id[16];
 	struct regulator *regulator;
 	struct reset_control *reset;
-	u32 regs_backup[ARRAY_SIZE(sunxi_led_regs_offset)];
 };
 
 enum {

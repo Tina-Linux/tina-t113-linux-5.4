@@ -138,13 +138,13 @@ struct rwnx_debugfs {
 	bool trace_prst;
 
 	char helper_cmd[64];
-	//struct work_struct helper_work;
+	struct work_struct helper_work;
 	bool helper_scheduled;
 	spinlock_t umh_lock;
 	bool unregistering;
 
 #ifndef CONFIG_RWNX_FHOST
-	struct rwnx_fw_log fw_log;
+	struct rwnx_fw_trace fw_trace;
 #endif /* CONFIG_RWNX_FHOST */
 
 #ifdef CONFIG_RWNX_FULLMAC
@@ -174,19 +174,38 @@ struct rwnx_rc_config_save {
 
 int rwnx_dbgfs_register(struct rwnx_hw *rwnx_hw, const char *name);
 void rwnx_dbgfs_unregister(struct rwnx_hw *rwnx_hw);
+int rwnx_um_helper(struct rwnx_debugfs *rwnx_debugfs, const char *cmd);
+int rwnx_trigger_um_helper(struct rwnx_debugfs *rwnx_debugfs);
 #ifdef CONFIG_RWNX_FULLMAC
 void rwnx_dbgfs_register_rc_stat(struct rwnx_hw *rwnx_hw, struct rwnx_sta *sta);
 void rwnx_dbgfs_unregister_rc_stat(struct rwnx_hw *rwnx_hw, struct rwnx_sta *sta);
 #endif
+
+int rwnx_dbgfs_register_fw_dump(struct rwnx_hw *rwnx_hw,
+								struct dentry *dir_drv,
+								struct dentry *dir_diags);
+void rwnx_dbgfs_trigger_fw_dump(struct rwnx_hw *rwnx_hw, char *reason);
+
+void rwnx_fw_trace_dump(struct rwnx_hw *rwnx_hw);
+void rwnx_fw_trace_reset(struct rwnx_hw *rwnx_hw);
+
 #else
+
 struct rwnx_debugfs {
 };
+
 static inline int rwnx_dbgfs_register(struct rwnx_hw *rwnx_hw, const char *name) { return 0; }
 static inline void rwnx_dbgfs_unregister(struct rwnx_hw *rwnx_hw) {}
+static inline int rwnx_um_helper(struct rwnx_debugfs *rwnx_debugfs, const char *cmd) { return 0; }
+static inline int rwnx_trigger_um_helper(struct rwnx_debugfs *rwnx_debugfs) { return 0; }
 #ifdef CONFIG_RWNX_FULLMAC
 static inline void rwnx_dbgfs_register_rc_stat(struct rwnx_hw *rwnx_hw, struct rwnx_sta *sta)  {}
 static inline void rwnx_dbgfs_unregister_rc_stat(struct rwnx_hw *rwnx_hw, struct rwnx_sta *sta)  {}
 #endif
+
+static inline void rwnx_fw_trace_dump(struct rwnx_hw *rwnx_hw) {}
+static inline void rwnx_fw_trace_reset(struct rwnx_hw *rwnx_hw) {}
+
 #endif /* CONFIG_RWNX_DEBUGFS */
 
 

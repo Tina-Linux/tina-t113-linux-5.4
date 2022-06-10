@@ -57,8 +57,6 @@
 /* driver strength register */
 #define REG_DRV			0xd0
 
-#define SPI_SELECT_ODDNUM_BLACK 0x10
-
 /*differrent manufacture spinand's ecc status location maybe not the same*/
 enum ecc_status_shift {
 	ECC_STATUS_SHIFT_0 = 0,
@@ -122,7 +120,6 @@ struct aw_spinand_phy_info {
 #define SPINAND_QUAD_READ			BIT(1)
 #define SPINAND_QUAD_PROGRAM			BIT(2)
 #define SPINAND_QUAD_NO_NEED_ENABLE		BIT(3)
-#define	SPINAND_TWO_PLANE_SELECT		BIT(7)
 #define SPINAND_ONEDUMMY_AFTER_RANDOMREAD	BIT(8)
 	int OperationOpt;
 	int MaxEraseTimes;

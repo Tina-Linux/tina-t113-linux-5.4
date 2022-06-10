@@ -519,22 +519,7 @@ void page_cache_sync_readahead(struct address_space *mapping,
 
 	/* be dumb */
 	if (filp && (filp->f_mode & FMODE_RANDOM)) {
-		struct backing_dev_info *bdi = inode_to_bdi(mapping->host);
-		unsigned long max_pages =  bdi->io_pages;
-
-		/*
-		 * Asynchronous read ahead is considered
-		 * only when max_pages is greater than or equal to
-		 * the quadruple of req_size, which avoid shocks in some special cases.
-		 * If one day you find that there is a shock,
-		 * you can still set this confficient higher.
-		 */
-		if (max_pages * 4 >= req_size)
-			force_page_cache_readahead(mapping, filp, offset, req_size);
-		else {
-			/* do read-ahead */
-			ondemand_readahead(mapping, ra, filp, false, offset, req_size);
-		}
+		force_page_cache_readahead(mapping, filp, offset, req_size);
 		return;
 	}
 

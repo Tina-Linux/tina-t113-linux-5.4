@@ -544,9 +544,6 @@ static void dispdbg_process(void)
 				return;
 			}
 
-			is_support =
-			    bsp_disp_hdmi_check_support_mode(disp,
-					     (enum disp_output_type)mode);
 			sprintf(dispdbg_priv.info, "%d", is_support);
 		} else {
 			sprintf(dispdbg_priv.info,

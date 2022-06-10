@@ -1867,10 +1867,11 @@ int genphy_read_status(struct phy_device *phydev)
 	phydev->pause = 0;
 	phydev->asym_pause = 0;
 
-	err = genphy_read_lpa(phydev);
-	if (err < 0)
-		return err;
-
+//	err = genphy_read_lpa(phydev);
+//	if (err < 0)
+//		return err;
+			phydev->duplex = DUPLEX_FULL;
+			phydev->speed = SPEED_100;
 	if (phydev->autoneg == AUTONEG_ENABLE && phydev->autoneg_complete) {
 		phy_resolve_aneg_linkmode(phydev);
 	} else if (phydev->autoneg == AUTONEG_DISABLE) {

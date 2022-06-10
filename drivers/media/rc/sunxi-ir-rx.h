@@ -121,13 +121,6 @@ enum {
 	IR_SUPLY_ENABLE,
 };
 
-static u32 sunxi_irrx_regs_offset[] = {
-	IR_CTRL_REG,
-	IR_SPLCFG_REG,
-	IR_RXCFG_REG,
-	IR_RXINTE_REG,
-};
-
 struct sunxi_ir_rx_data {
 	void __iomem *reg_base;
 	struct platform_device	*pdev;
@@ -144,7 +137,6 @@ struct sunxi_ir_rx_data {
 	u32 ir_addr_cnt;
 	u32 ir_addr[MAX_ADDR_NUM];
 	u32 ir_powerkey[MAX_ADDR_NUM];
-	u32 regs_backup[ARRAY_SIZE(sunxi_irrx_regs_offset)];
 	//struct device *dev;
 	//int bus_num;
 };

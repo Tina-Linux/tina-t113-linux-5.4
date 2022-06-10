@@ -12,7 +12,7 @@ disp-$(CONFIG_DISP2_SUNXI_COMPOSER) += dev_composer.o
 disp-objs += de/disp_display.o de/disp_features.o de/disp_device.o \
 	     de/disp_lcd.o de/disp_manager.o de/disp_private.o \
 	     de/disp_smart_backlight.o de/disp_enhance.o de/disp_capture.o \
-	     de/disp_hdmi.o de/disp_tv.o de/disp_vdevice.o \
+	     de/disp_tv.o de/disp_vdevice.o \
 	     de/disp_vga.o \
 	     de/disp_vdpo.o de/disp_edp.o de/disp_rtwb.o
 disp-$(CONFIG_EINK_PANEL_USED) += de/disp_eink_manager.o \
@@ -25,7 +25,7 @@ disp-$(CONFIG_SUNXI_DISP2_FB_ROTATION_SUPPORT) += de/disp_rotation_sw.o
 disp-$(CONFIG_SUNXI_DISP2_FB_HW_ROTATION_SUPPORT) += fb_g2d_rot.o
 
 disp-objs += lcd/panels.o lcd/lcd_source.o lcd/default_panel.o
-disp-objs += of_service.o de/lcd_debug.o
+
 
 disp-$(CONFIG_LCD_SUPPORT_HE0801A068) += lcd/he0801a068.o
 disp-$(CONFIG_EINK_PANEL_USED) += lcd/default_eink.o
@@ -64,7 +64,6 @@ disp-$(CONFIG_LCD_SUPPORT_K101IM2QA04) += lcd/k101im2qa04.o
 disp-$(CONFIG_LCD_SUPPORT_CC08021801_310_800X1280) += lcd/CC08021801_310_800X1280.o
 disp-$(CONFIG_LCD_SUPPORT_K080_IM2HYL802R_800X1280) += lcd/K080_IM2HYL802R_800X1280.o
 disp-$(CONFIG_LCD_SUPPORT_K101_IM2BYL02_L_800X1280) += lcd/K101_IM2BYL02_L_800X1280.o
-disp-y += lcd/super_lcd_driver.o
 
 disp-$(CONFIG_EINK_PANEL_USED) += de/disp_eink_manager.o \
 		de/eink_buffer_manager.o de/eink_pipeline_manager.o \

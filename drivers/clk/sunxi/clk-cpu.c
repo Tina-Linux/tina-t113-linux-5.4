@@ -16,7 +16,7 @@
 #include <linux/err.h>
 #include <linux/module.h>
 #include "clk-cpu.h"
-#include "../clk-debugfs.h"
+#include "clk-debugfs.h"
 
 static int sunxi_cpuclk_pre_rate_change(struct clk_notifier_data *ndata,
 		struct sunxi_cpuclk *cpuclk)

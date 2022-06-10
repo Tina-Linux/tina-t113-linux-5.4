@@ -30,6 +30,8 @@ obj-$(CONFIG_CLK_SUNXI_PRCM_SUN6I)	+= clk-sun6i-ar100.o
 obj-$(CONFIG_CLK_SUNXI_PRCM_SUN8I)	+= clk-sun8i-apb0.o
 obj-$(CONFIG_CLK_SUNXI_PRCM_SUN8I)	+= clk-sun6i-apb0-gates.o
 
+obj-$(CONFIG_COMMON_CLK_DEBUG) += clk-debugfs.o
+
 obj-$(CONFIG_CLK_SUNXI_DDR) += clk-ddr.o
 
 obj-$(CONFIG_CLK_SUN8IW15) += clk.o

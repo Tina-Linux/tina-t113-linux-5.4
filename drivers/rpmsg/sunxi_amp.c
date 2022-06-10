@@ -411,7 +411,10 @@ static void sunxi_rpmsg_create(struct sx_msgbox_dev *msg_dev, int idx)
 	list_add(&sx_rpdev->node, &msg_dev->head);
 
 	strncpy(sx_rpdev->rp_dev.id.name, rpmsg_id, RPMSG_NAME_SIZE - 1);
-	ret = rpmsg_register_device(&sx_rpdev->rp_dev);
+	if (strcmp(rpmsg_id, "rpmsg_chrdev") == 0)
+		ret = rpmsg_chrdev_register_device(&sx_rpdev->rp_dev);
+	else
+		ret = rpmsg_register_device(&sx_rpdev->rp_dev);
 	if (ret) {
 		dev_dbg(&pdev->dev, "register rpsmg dev error %d\n", ret);
 		devm_kfree(&pdev->dev, sx_rpdev);

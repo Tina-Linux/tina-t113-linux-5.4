@@ -11,7 +11,7 @@
  * GNU General Public License for more details.
  *
  */
-//#define DEBUG
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -44,16 +44,6 @@ do {									\
 
 #define IRTX_ERR(fmt, arg...) pr_err("%s()%d - "fmt, __func__, __LINE__, ##arg)
 
-static u32 sunxi_irtx_regs_offset[] = {
-	IR_TX_MCR,
-	IR_TX_CR,
-	IR_TX_IDC_H,
-	IR_TX_IDC_L,
-	IR_TX_STAR,
-	IR_TX_INTC,
-	IR_TX_GLR,
-};
-
 struct ir_raw_buffer {
 	unsigned int tx_dcnt;
 	unsigned char tx_buf[IR_TX_RAW_BUF_SIZE];
@@ -71,24 +61,7 @@ struct sunxi_ir_tx_data {
 	struct pinctrl *pctrl;
 	unsigned int suply_vol;
 	int irq_num;
-	u32 regs_backup[ARRAY_SIZE(sunxi_irtx_regs_offset)];
 };
-
-static inline void sunxi_irtx_save_regs(struct sunxi_ir_tx_data *chip)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_irtx_regs_offset); i++)
-		chip->regs_backup[i] = readl(chip->reg_base + sunxi_irtx_regs_offset[i]);
-}
-
-static inline void sunxi_irtx_restore_regs(struct sunxi_ir_tx_data *chip)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(sunxi_irtx_regs_offset); i++)
-		writel(chip->regs_backup[i], chip->reg_base + sunxi_irtx_regs_offset[i]);
-}
 
 static struct sunxi_ir_tx_data *ir_tx_data;
 static struct ir_raw_buffer     ir_rawbuf;
@@ -890,10 +863,8 @@ static int sunxi_ir_tx_probe(struct platform_device *pdev)
 
 err_request_irq:
 	platform_set_drvdata(pdev, NULL);
-	rc_unregister_device(ir_tx_rcdev);
-	ir_tx_rcdev = NULL;
-	ir_tx_clk_uncfg(ir_tx_data);
 	ir_tx_reg_clear(ir_tx_data);
+	ir_tx_clk_uncfg(ir_tx_data);
 
 err_startup:
 	return ret;
@@ -921,23 +892,54 @@ MODULE_DEVICE_TABLE(of, sunxi_ir_tx_of_match);
 
 #ifdef CONFIG_PM
 
+static int ir_tx_resume_setup(struct sunxi_ir_tx_data *ir_tx_data)
+{
+	int ret;
+
+	if (IS_ERR_OR_NULL(ir_tx_data->pctrl)) {
+		pr_err("ir-tx pin config err\n");
+		return -1;
+	}
+
+	ret = ir_tx_clk_cfg(ir_tx_data);
+	if (ret) {
+		pr_err("ir tx clk configure failed\n");
+		return ret;
+	}
+
+	ir_tx_reg_cfg(ir_tx_data);
+
+	ir_tx_select_gpio_state(ir_tx_data->pctrl, PINCTRL_STATE_DEFAULT);
+
+	return 0;
+}
+
+static int ir_tx_suspend_setup(struct sunxi_ir_tx_data *ir_tx_data)
+{
+	ir_tx_select_gpio_state(ir_tx_data->pctrl, PINCTRL_STATE_SLEEP);
+
+	ir_tx_reg_clear(ir_tx_data);
+
+	ir_tx_clk_uncfg(ir_tx_data);
+
+	return 0;
+}
+
 static int sunxi_ir_tx_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sunxi_ir_tx_data *ir_tx_data = platform_get_drvdata(pdev);
+	int ret = 0;
 
 	dprintk(DEBUG_SUSPEND, "enter\n");
 
 	disable_irq_nosync(ir_tx_data->irq_num);
 
-	sunxi_irtx_save_regs(ir_tx_data);
-
-	ir_tx_select_gpio_state(ir_tx_data->pctrl, PINCTRL_STATE_SLEEP);
-
-	clk_disable_unprepare(ir_tx_data->mclk);
-	clk_disable_unprepare(ir_tx_data->bclk);
-
-	reset_control_assert(ir_tx_data->reset);
+	ret = ir_tx_suspend_setup(ir_tx_data);
+	if (ret) {
+		pr_err("%s: ir tx suspend failed\n", __func__);
+		return ret;
+	}
 
 	return 0;
 }
@@ -946,17 +948,15 @@ static int sunxi_ir_tx_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sunxi_ir_tx_data *ir_tx_data = platform_get_drvdata(pdev);
+	int ret = 0;
 
 	dprintk(DEBUG_SUSPEND, "enter\n");
 
-	reset_control_deassert(ir_tx_data->reset);
-
-	clk_prepare_enable(ir_tx_data->bclk);
-	clk_prepare_enable(ir_tx_data->mclk);
-
-	ir_tx_select_gpio_state(ir_tx_data->pctrl, PINCTRL_STATE_DEFAULT);
-
-	sunxi_irtx_restore_regs(ir_tx_data);
+	ret = ir_tx_resume_setup(ir_tx_data);
+	if (ret) {
+		IRTX_ERR("ir_tx_setup failed!\n");
+		return ret;
+	}
 
 	enable_irq(ir_tx_data->irq_num);
 

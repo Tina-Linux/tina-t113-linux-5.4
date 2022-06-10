@@ -19,7 +19,7 @@
 #define RAM_LMAC_FW_ADDR               0x00000000
 
 #define ROM_FMAC_FW_ADDR               0x00010000
-#define RAM_FMAC_FW_ADDR               0x00120000
+#define RAM_FMAC_FW_ADDR               0x00110000
 
 /*****************************************************************************
  * Addresses within RWNX_ADDR_SYSTEM

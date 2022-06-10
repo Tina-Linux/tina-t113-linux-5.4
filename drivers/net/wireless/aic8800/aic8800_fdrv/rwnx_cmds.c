@@ -208,7 +208,7 @@ static int cmd_mgr_queue(struct rwnx_cmd_mgr *cmd_mgr, struct rwnx_cmd *cmd)
 		}
 		#else
 		unsigned long tout = msecs_to_jiffies(RWNX_80211_CMD_TIMEOUT_MS * cmd_mgr->queue_sz);
-		if (!wait_for_completion_timeout(&cmd->complete, tout)) {
+		if (!wait_for_completion_killable_timeout(&cmd->complete, tout)) {
 			printk(KERN_CRIT"cmd timed-out\n");
 			#ifdef AICWF_SDIO_SUPPORT
 			ret = aicwf_sdio_writeb(sdiodev, SDIOWIFI_WAKEUP_REG, 2);
@@ -326,7 +326,7 @@ void cmd_mgr_task_process(struct work_struct *work)
 			kfree(next->a2e_msg);
 
 			tout = msecs_to_jiffies(RWNX_80211_CMD_TIMEOUT_MS * cmd_mgr->queue_sz);
-			if (!wait_for_completion_timeout(&next->complete, tout)) {
+			if (!wait_for_completion_killable_timeout(&next->complete, tout)) {
 				printk(KERN_CRIT"cmd timed-out\n");
 #ifdef AICWF_SDIO_SUPPORT
 				if (aicwf_sdio_writeb(sdiodev, SDIOWIFI_WAKEUP_REG, 2) < 0) {
